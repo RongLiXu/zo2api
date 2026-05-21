@@ -2,10 +2,19 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+ARG APP_VERSION=dev
+ARG SOURCE_TAG=dev
+
 ENV NODE_ENV=production
 ENV PORT=8000
+ENV APP_VERSION=${APP_VERSION}
+
+LABEL org.opencontainers.image.title="zo2api"
+LABEL org.opencontainers.image.version="${APP_VERSION}"
+LABEL org.opencontainers.image.ref.name="${SOURCE_TAG}"
 
 COPY package.json ./
+COPY VERSION ./
 COPY server.js ./
 
 RUN chown -R node:node /app
