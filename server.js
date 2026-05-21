@@ -698,7 +698,7 @@ function splitSseBlocks(buffer) {
 
     const normalized = String(buffer || '').replace(/\r\n/g, '\n');
 
-    const parts = normalized.split('');
+    const parts = normalized.split('\n\n');
 
     return {
         blocks: parts.slice(0, -1),
@@ -939,6 +939,219 @@ function parseZoOutput(output, proxyInput = '') {
 
 }
 
+function tokenNumber(value) {
+
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.trunc(value));
+
+    if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) {
+        return Math.max(0, Math.trunc(Number(value)));
+    }
+
+    return null;
+
+}
+
+function pickTokenValue(obj, keys) {
+
+    if (!obj || typeof obj !== 'object') return null;
+
+    for (const key of keys) {
+
+        if (!key.includes('.')) {
+
+            if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                const value = tokenNumber(obj[key]);
+                if (value !== null) return value;
+            }
+
+            continue;
+
+        }
+
+        let cursor = obj;
+
+        for (const part of key.split('.')) {
+            if (!cursor || typeof cursor !== 'object' || !Object.prototype.hasOwnProperty.call(cursor, part)) {
+                cursor = null;
+                break;
+            }
+            cursor = cursor[part];
+        }
+
+        const value = tokenNumber(cursor);
+        if (value !== null) return value;
+
+    }
+
+    return null;
+
+}
+
+function findTokenValueDeep(obj, keys, seen = new Set()) {
+
+    if (!obj || typeof obj !== 'object' || seen.has(obj)) return null;
+
+    seen.add(obj);
+
+    const direct = pickTokenValue(obj, keys);
+    if (direct !== null) return direct;
+
+    for (const value of Object.values(obj)) {
+        const nested = findTokenValueDeep(value, keys, seen);
+        if (nested !== null) return nested;
+    }
+
+    return null;
+
+}
+
+function usageCandidates(zoBody) {
+
+    if (!zoBody || typeof zoBody !== 'object') return [];
+
+    return [
+        zoBody.usage,
+        zoBody.token_usage,
+        zoBody.tokens,
+        zoBody.metrics,
+        zoBody.billing,
+        zoBody.data && zoBody.data.usage,
+        zoBody.data && zoBody.data.token_usage,
+        zoBody.response && zoBody.response.usage,
+        zoBody.result && zoBody.result.usage,
+        zoBody.meta && zoBody.meta.usage,
+        zoBody.metadata && zoBody.metadata.usage,
+        zoBody
+    ].filter(v => v && typeof v === 'object');
+
+}
+
+function pickUsageToken(zoBody, keys) {
+
+    for (const candidate of usageCandidates(zoBody)) {
+        const value = pickTokenValue(candidate, keys);
+        if (value !== null) return value;
+    }
+
+    return findTokenValueDeep(zoBody, keys) ?? 0;
+
+}
+
+function hasUsageToken(zoBody, keys) {
+
+    for (const candidate of usageCandidates(zoBody)) {
+        if (pickTokenValue(candidate, keys) !== null) return true;
+    }
+
+    return findTokenValueDeep(zoBody, keys) !== null;
+
+}
+
+function normalizeZoUsage(zoBody) {
+
+    const inputTokens = pickUsageToken(zoBody, [
+        'input_tokens',
+        'prompt_tokens',
+        'total_input_tokens',
+        'input_token_count',
+        'prompt_token_count',
+        'inputTokens',
+        'promptTokens'
+    ]);
+
+    const outputTokens = pickUsageToken(zoBody, [
+        'output_tokens',
+        'completion_tokens',
+        'total_output_tokens',
+        'output_token_count',
+        'completion_token_count',
+        'outputTokens',
+        'completionTokens'
+    ]);
+
+    const cacheReadTokens = pickUsageToken(zoBody, [
+        'cache_read_input_tokens',
+        'cache_read_tokens',
+        'input_cache_read_tokens',
+        'prompt_cache_read_tokens',
+        'prompt_tokens_details.cached_tokens',
+        'input_tokens_details.cached_tokens',
+        'cached_tokens',
+        'cacheReadInputTokens',
+        'cacheReadTokens'
+    ]);
+
+    const cacheWriteTokens = pickUsageToken(zoBody, [
+        'cache_creation_input_tokens',
+        'cache_write_input_tokens',
+        'cache_write_tokens',
+        'input_cache_write_tokens',
+        'prompt_cache_write_tokens',
+        'prompt_tokens_details.cache_creation_tokens',
+        'input_tokens_details.cache_creation_tokens',
+        'cacheCreationInputTokens',
+        'cacheWriteInputTokens',
+        'cacheWriteTokens'
+    ]);
+
+    const totalTokens = pickUsageToken(zoBody, [
+        'total_tokens',
+        'total_token_count',
+        'totalTokens'
+    ]);
+
+    const inputUsesOpenAIName = hasUsageToken(zoBody, ['prompt_tokens', 'promptTokens']);
+
+    return {
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        cacheWriteTokens,
+        totalTokens: totalTokens || inputTokens + outputTokens + (inputUsesOpenAIName ? 0 : cacheReadTokens + cacheWriteTokens),
+        inputUsesOpenAIName
+    };
+
+}
+
+function openAIUsageFromZo(zoBody) {
+
+    const usage = normalizeZoUsage(zoBody);
+    const promptTokens = usage.inputUsesOpenAIName
+        ? usage.inputTokens
+        : usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens;
+    const totalTokens = Math.max(usage.totalTokens, promptTokens + usage.outputTokens);
+    const out = {
+        prompt_tokens: promptTokens,
+        completion_tokens: usage.outputTokens,
+        total_tokens: totalTokens
+    };
+
+    if (usage.cacheReadTokens > 0 || usage.cacheWriteTokens > 0) {
+        out.prompt_tokens_details = {
+            cached_tokens: usage.cacheReadTokens,
+            cache_creation_tokens: usage.cacheWriteTokens
+        };
+    }
+
+    return out;
+
+}
+
+function anthropicUsageFromZo(zoBody) {
+
+    const usage = normalizeZoUsage(zoBody);
+    const out = {
+        input_tokens: usage.inputTokens,
+        output_tokens: usage.outputTokens
+    };
+
+    if (usage.cacheReadTokens > 0) out.cache_read_input_tokens = usage.cacheReadTokens;
+    if (usage.cacheWriteTokens > 0) out.cache_creation_input_tokens = usage.cacheWriteTokens;
+
+    return out;
+
+}
+
 // =========================================================================
 
 // NETWORKING
@@ -1162,7 +1375,7 @@ function openAIToZoOutput(zoBody, requestModel, requestTools) {
 
         }],
 
-        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+        usage: openAIUsageFromZo(zoBody)
 
     };
 
@@ -1228,7 +1441,7 @@ function anthropicToZoOutput(zoBody, requestModel, requestTools) {
 
         stop_sequence: null,
 
-        usage: { input_tokens: 0, output_tokens: 0 }
+        usage: anthropicUsageFromZo(zoBody)
 
     };
 
@@ -1249,6 +1462,7 @@ function writeOpenAIStreamFromZo(res, zoBody, requestModel, requestTools) {
     const hasToolCalls = parsed.tool_calls && parsed.tool_calls.length > 0;
 
     const cleanText = sanitizeOutput(parsed.text || '');
+    const usage = openAIUsageFromZo(zoBody);
 
     res.writeHead(200, {
 
@@ -1260,15 +1474,16 @@ function writeOpenAIStreamFromZo(res, zoBody, requestModel, requestTools) {
 
     });
 
-    function chunk(delta, finish_reason = null) {
+    function chunk(delta, finish_reason = null, chunkUsage = undefined) {
 
-        res.write(`data: ${JSON.stringify({
-
+        const payload = {
             id, object: 'chat.completion.chunk', created, model: requestModel,
-
             choices: [{ index: 0, delta, finish_reason }]
+        };
 
-        })}
+        if (chunkUsage !== undefined) payload.usage = chunkUsage;
+
+        res.write(`data: ${JSON.stringify(payload)}
 
 `);
 
@@ -1302,11 +1517,11 @@ function writeOpenAIStreamFromZo(res, zoBody, requestModel, requestTools) {
 
         });
 
-        chunk({}, 'tool_calls');
+        chunk({}, 'tool_calls', usage);
 
     } else {
 
-        chunk({}, 'stop');
+        chunk({}, 'stop', usage);
 
     }
 
@@ -1329,6 +1544,7 @@ function writeAnthropicStreamFromZo(res, zoBody, requestModel, requestTools) {
     const hasToolCalls = parsed.tool_calls && parsed.tool_calls.length > 0;
 
     const cleanText = sanitizeOutput(parsed.text || '');
+    const usage = anthropicUsageFromZo(zoBody);
 
     let index = 0;
 
@@ -1362,7 +1578,7 @@ data: ${JSON.stringify(data)}
 
             content: [], stop_reason: null, stop_sequence: null,
 
-            usage: { input_tokens: 0, output_tokens: 0 }
+            usage
 
         }
 
@@ -1412,7 +1628,7 @@ data: ${JSON.stringify(data)}
 
         }
 
-        emit('message_delta', { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 0 } });
+        emit('message_delta', { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: usage.output_tokens } });
 
     } else {
 
@@ -1424,7 +1640,7 @@ data: ${JSON.stringify(data)}
 
         }
 
-        emit('message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 0 } });
+        emit('message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: usage.output_tokens } });
 
     }
 
@@ -1466,6 +1682,8 @@ function pipeZoStreamToOpenAI(zoStream, clientRes, requestModel, requestTools, p
 
     let finished = false;
 
+    let finalUsage = null;
+
     function collectHeaders(h) {
 
         if (responseHeadersCollected) return;
@@ -1478,15 +1696,16 @@ function pipeZoStreamToOpenAI(zoStream, clientRes, requestModel, requestTools, p
 
     }
 
-    function sendDelta(delta) {
+    function sendDelta(delta, usage = undefined) {
 
-        clientRes.write(`data: ${JSON.stringify({
-
+        const payload = {
             id, object: 'chat.completion.chunk', created, model: requestModel,
-
             choices: [{ index: 0, delta, finish_reason: null }]
+        };
 
-        })}
+        if (usage !== undefined) payload.usage = usage;
+
+        clientRes.write(`data: ${JSON.stringify(payload)}
 
 `);
 
@@ -1498,13 +1717,14 @@ function pipeZoStreamToOpenAI(zoStream, clientRes, requestModel, requestTools, p
 
         finished = true;
 
-        clientRes.write(`data: ${JSON.stringify({
-
+        const payload = {
             id, object: 'chat.completion.chunk', created, model: requestModel,
-
             choices: [{ index: 0, delta: {}, finish_reason: reason }]
+        };
 
-        })}
+        if (finalUsage) payload.usage = finalUsage;
+
+        clientRes.write(`data: ${JSON.stringify(payload)}
 
 `);
 
@@ -1525,6 +1745,9 @@ function pipeZoStreamToOpenAI(zoStream, clientRes, requestModel, requestTools, p
         let ev;
 
         try { ev = JSON.parse(raw); } catch { return; }
+
+        const eventUsage = openAIUsageFromZo(ev);
+        if (eventUsage.total_tokens > 0) finalUsage = eventUsage;
 
         if (eventType === 'FrontendModelResponse' || ev.type === 'FrontendModelResponse') {
 
@@ -1555,6 +1778,8 @@ function pipeZoStreamToOpenAI(zoStream, clientRes, requestModel, requestTools, p
         }
 
         if (eventType === 'End' || ev.type === 'End') {
+
+            finalUsage = openAIUsageFromZo(ev);
 
             const rawParsed = parseZoOutput(accumulatedText.trim());
 
@@ -1739,6 +1964,8 @@ function pipeZoStreamToAnthropic(zoStream, clientRes, requestModel, requestTools
 
     let finished = false;
 
+    let finalUsage = null;
+
     function collectHeaders(h) {
 
         if (responseHeadersCollected) return;
@@ -1779,7 +2006,7 @@ data: ${JSON.stringify(data)}
 
             delta: { stop_reason: stopReason, stop_sequence: null },
 
-            usage: { output_tokens: 0 }
+            usage: { output_tokens: finalUsage ? finalUsage.output_tokens : 0 }
 
         });
 
@@ -1807,7 +2034,7 @@ data: ${JSON.stringify({ type: 'message_stop' })}
 
                 content: [], stop_reason: null, stop_sequence: null,
 
-                usage: { input_tokens: 0, output_tokens: 0 }
+                usage: finalUsage || { input_tokens: 0, output_tokens: 0 }
 
             }
 
@@ -1857,6 +2084,16 @@ data: ${JSON.stringify({ type: 'message_stop' })}
 
         try { ev = JSON.parse(raw); } catch { return; }
 
+        const eventUsage = anthropicUsageFromZo(ev);
+        if (
+            eventUsage.input_tokens > 0 ||
+            eventUsage.output_tokens > 0 ||
+            eventUsage.cache_read_input_tokens > 0 ||
+            eventUsage.cache_creation_input_tokens > 0
+        ) {
+            finalUsage = eventUsage;
+        }
+
         if (eventType === 'FrontendModelResponse' || ev.type === 'FrontendModelResponse') {
 
             const content = (ev.parts && ev.parts[0] && ev.parts[0].content) || ev.data?.content || '';
@@ -1892,6 +2129,8 @@ data: ${JSON.stringify({ type: 'message_stop' })}
         }
 
         if (eventType === 'End' || ev.type === 'End') {
+
+            finalUsage = anthropicUsageFromZo(ev);
 
             const rawParsed = parseZoOutput(accumulatedText.trim());
 
