@@ -199,3 +199,12 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.version.outputs.version }}
             SOURCE_TAG=${{ steps.version.outputs.source_tag }}
+
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ steps.image.outputs.image }}
+          readme-filepath: ./DOCKER.md
+          short-description: Zo Computer API proxy with OpenAI and Anthropic compatible endpoints.

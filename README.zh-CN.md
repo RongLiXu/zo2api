@@ -143,6 +143,8 @@ curl http://localhost:8000/healthz
 docker logs -f zo2api
 ```
 
+Docker Hub 仓库介绍会在每次 release 时从 `DOCKER.md` 自动同步。Docker 专用的运行方式、tag 和环境变量说明应维护在该文件中，这样 Docker Hub 页面会与发布镜像保持一致。
+
 ## 环境变量
 
 | 变量 | 必填 | 默认值 | 说明 |
@@ -364,7 +366,7 @@ docker compose logs -f zo2api
 | 工作流 | 触发条件 | 作用 |
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | 推送普通分支和 `pull_request` | 执行 CI、依赖审计、CodeQL 代码审计，全部通过后才构建 Docker 镜像。 |
-| `.github/workflows/release.yml` | 推送匹配 `v*` 的 tag | 执行 CI、依赖审计、CodeQL 代码审计，创建 GitHub Release，然后把多架构 Docker 镜像推送到 Docker Hub。 |
+| `.github/workflows/release.yml` | 推送匹配 `v*` 的 tag | 执行 CI、依赖审计、CodeQL 代码审计，创建 GitHub Release，把多架构 Docker 镜像推送到 Docker Hub，然后用 `DOCKER.md` 更新 Docker Hub 仓库介绍。 |
 
 代码审计包含：
 
@@ -452,6 +454,7 @@ docker compose config
 │   └── workflows/
 │       ├── ci.yml
 │       └── release.yml
+├── DOCKER.md
 ├── Dockerfile
 ├── README.md
 ├── README.zh-CN.md

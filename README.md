@@ -143,6 +143,8 @@ curl http://localhost:8000/healthz
 docker logs -f zo2api
 ```
 
+The Docker Hub repository description is generated from `DOCKER.md` during every release. Keep Docker-specific usage, tag, and environment-variable documentation there so Docker Hub stays in sync with the released image.
+
 ## Environment Variables
 
 | Variable | Required | Default | Description |
@@ -364,7 +366,7 @@ The repository includes GitHub Actions workflows:
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | `push` to branches and `pull_request` | Runs CI, dependency audit, CodeQL code audit, then builds the Docker image only after all gates pass. |
-| `.github/workflows/release.yml` | `push` tags matching `v*` | Runs CI, dependency audit, CodeQL code audit, creates a GitHub Release, then pushes multi-arch Docker images to Docker Hub. |
+| `.github/workflows/release.yml` | `push` tags matching `v*` | Runs CI, dependency audit, CodeQL code audit, creates a GitHub Release, pushes multi-arch Docker images to Docker Hub, then updates the Docker Hub description from `DOCKER.md`. |
 
 The code audit gates include:
 
@@ -452,6 +454,7 @@ docker compose config
 │   └── workflows/
 │       ├── ci.yml
 │       └── release.yml
+├── DOCKER.md
 ├── Dockerfile
 ├── README.md
 ├── README.zh-CN.md
