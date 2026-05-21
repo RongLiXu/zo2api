@@ -1,0 +1,1959 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kimiro Chat Lab</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a1020;
+      --bg2: #0f1735;
+      --panel: rgba(13, 18, 36, 0.92);
+      --panel-soft: rgba(255,255,255,0.04);
+      --line: rgba(148,163,184,0.16);
+      --line-strong: rgba(148,163,184,0.24);
+      --text: #edf3ff;
+      --muted: #94a3c7;
+      --blue: #4f8cff;
+      --blue2: #2f6bff;
+      --green: #34d399;
+      --yellow: #f59e0b;
+      --red: #ef4444;
+      --shadow: 0 20px 60px rgba(0,0,0,.35);
+      --user-bg: linear-gradient(135deg, rgba(79,140,255,.20), rgba(47,107,255,.10));
+      --assistant-bg: rgba(255,255,255,.045);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(79,140,255,.12), transparent 28%),
+        radial-gradient(circle at top right, rgba(52,211,153,.08), transparent 24%),
+        linear-gradient(180deg, var(--bg), var(--bg2));
+      color: var(--text);
+    }
+
+    button, input, select, textarea {
+      font: inherit;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 18px;
+      border-right: 1px solid var(--line);
+      background: rgba(8, 12, 26, .88);
+      backdrop-filter: blur(18px);
+      overflow: auto;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-badge {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--blue), #7c3aed);
+      box-shadow: 0 10px 30px rgba(79, 140, 255, .3);
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 17px;
+    }
+
+    .brand p {
+      margin: 2px 0 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .panel {
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+    }
+
+    .panel h2 {
+      margin: 0 0 10px;
+      font-size: 14px;
+    }
+
+    label {
+      display: block;
+      margin: 10px 0 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    input, select, textarea, button {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: rgba(10,14,30,.72);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 11px 12px;
+      outline: none;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: rgba(79,140,255,.65);
+      box-shadow: 0 0 0 3px rgba(79,140,255,.12);
+    }
+
+    textarea { resize: vertical; min-height: 88px; }
+
+    .seg {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .seg label {
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255,255,255,.02);
+      color: var(--text);
+      cursor: pointer;
+      flex: 1;
+      min-width: 120px;
+    }
+
+    .seg input { width: auto; margin: 0; padding: 0; border: none; box-shadow: none; }
+
+    .grid2, .grid3 {
+      display: grid;
+      gap: 10px;
+    }
+
+    .grid2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .grid3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+
+    .btn-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    button {
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--blue), var(--blue2));
+      border-color: transparent;
+      font-weight: 700;
+      transition: .18s ease;
+    }
+
+    button:hover { transform: translateY(-1px); }
+
+    button.secondary {
+      background: rgba(255,255,255,.03);
+      border-color: var(--line);
+      font-weight: 600;
+    }
+
+    .tiny {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .status-box, .diag-box {
+      white-space: pre-wrap;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(10,14,30,.55);
+      padding: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .ok { color: var(--green); }
+    .warn { color: var(--yellow); }
+    .err { color: var(--red); }
+
+    .session-toolbar {
+      display: flex;
+      gap: 8px;
+    }
+
+    .session-toolbar button {
+      width: auto;
+      flex: 1;
+    }
+
+    .session-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 280px;
+      overflow: auto;
+      margin-top: 10px;
+    }
+
+    .session-item {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255,255,255,.03);
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: .18s ease;
+    }
+
+    .session-item.active {
+      border-color: rgba(79,140,255,.45);
+      background: rgba(79,140,255,.12);
+    }
+
+    .session-item-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: flex-start;
+    }
+
+    .session-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .session-delete {
+      width: 28px;
+      min-width: 28px;
+      height: 28px;
+      border-radius: 10px;
+      padding: 0;
+      display: inline-grid;
+      place-items: center;
+      background: rgba(239,68,68,.10);
+      border: 1px solid rgba(239,68,68,.18);
+      color: #fda4af;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .session-delete:hover {
+      background: rgba(239,68,68,.16);
+      transform: none;
+    }
+
+    .session-meta {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .main {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      min-width: 0;
+      height: 100vh;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 18px 22px 14px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(10,14,30,.52);
+      backdrop-filter: blur(12px);
+    }
+
+    .topbar h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .topbar p {
+      margin: 4px 0 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .top-pills {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.03);
+      color: var(--muted);
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+
+    .model-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.03);
+      color: var(--muted);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      min-width: 240px;
+    }
+
+    .model-pill label {
+      margin: 0;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .model-pill select,
+    .model-pill input {
+      width: auto;
+      min-width: 0;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      padding: 2px 4px;
+      border-radius: 8px;
+      box-shadow: none;
+    }
+
+    .model-pill select {
+      flex: 1;
+    }
+
+    .model-pill input {
+      max-width: 180px;
+      border-left: 1px solid var(--line);
+      padding-left: 8px;
+    }
+
+    .chat-stage {
+      min-height: 0;
+      overflow: hidden;
+      padding: 22px;
+    }
+
+    .chat-wrap {
+      max-width: 960px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      height: 100%;
+      min-height: 0;
+    }
+
+    .chat-scroll {
+      min-height: 0;
+      overflow-y: auto;
+      padding-right: 6px;
+      scroll-behavior: smooth;
+    }
+
+    .welcome {
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      box-shadow: var(--shadow);
+    }
+
+    .welcome h3 {
+      margin: 0 0 8px;
+      font-size: 24px;
+    }
+
+    .welcome p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.75;
+    }
+
+    .msg {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .msg.user { justify-content: flex-end; }
+
+    .avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      font-size: 12px;
+      font-weight: 700;
+      flex: 0 0 34px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.04);
+      color: var(--muted);
+    }
+
+    .msg.user .avatar {
+      background: linear-gradient(135deg, var(--blue), #7c3aed);
+      color: white;
+      border-color: transparent;
+      order: 2;
+    }
+
+    .bubble-wrap {
+      max-width: min(80%, 760px);
+    }
+
+    .msg.user .bubble-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+
+    .meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 0 0 6px;
+    }
+
+    .meta-sub {
+      margin-top: 4px;
+      font-size: 11px;
+      color: var(--muted);
+      opacity: .92;
+    }
+
+    .meta-state {
+      margin-top: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.03);
+      border-radius: 999px;
+      padding: 4px 8px;
+    }
+
+    .meta-state.loading { color: #93c5fd; }
+    .meta-state.streaming { color: #86efac; }
+    .meta-state.error { color: #fca5a5; }
+    .meta-state.timeout { color: #fcd34d; }
+
+    .bubble {
+      border: 1px solid var(--line-strong);
+      border-radius: 18px;
+      padding: 14px 16px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.72;
+      background: var(--assistant-bg);
+      box-shadow: var(--shadow);
+    }
+
+    .bubble.json {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      background: rgba(255,255,255,.03);
+    }
+
+    .msg-actions {
+      margin-top: 8px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .msg-copy {
+      width: auto;
+      border-radius: 10px;
+      padding: 6px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--line);
+      color: var(--muted);
+    }
+
+    .msg.user .bubble {
+      background: var(--user-bg);
+      border-color: rgba(79,140,255,.28);
+    }
+
+    .msg.system .bubble {
+      background: rgba(245,158,11,.08);
+      border-color: rgba(245,158,11,.22);
+    }
+
+    .composer {
+      border-top: 1px solid var(--line);
+      background: rgba(10,14,30,.72);
+      backdrop-filter: blur(12px);
+      padding: 18px 22px 22px;
+      position: sticky;
+      bottom: 0;
+    }
+
+    .composer-inner {
+      max-width: 960px;
+      margin: 0 auto;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: rgba(14,19,38,.96);
+      box-shadow: var(--shadow);
+      padding: 14px;
+    }
+
+    .composer textarea {
+      min-height: 120px;
+      border: none;
+      background: transparent;
+      box-shadow: none;
+      padding: 8px 8px 12px;
+      resize: vertical;
+      display: block;
+    }
+
+    .composer-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
+
+    .composer-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .ghost-btn {
+      width: auto;
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--line);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 14px;
+      font-size: 13px;
+    }
+
+    .primary-btn {
+      width: auto;
+      min-width: 120px;
+      padding: 10px 16px;
+      border-radius: 14px;
+    }
+
+    .debug-panel {
+      margin-top: 12px;
+    }
+
+    .debug-toggle {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .debug-toggle button {
+      width: auto;
+      padding: 8px 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--line);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .debug-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .stream-panel, .raw-panel {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255,255,255,.03);
+      overflow: hidden;
+    }
+
+    .stream-head, .raw-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .stream-body, .raw-body {
+      padding: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 260px;
+      overflow: auto;
+    }
+
+    .hidden { display: none; }
+
+    @media (max-width: 1080px) {
+      .app { grid-template-columns: 1fr; height: auto; min-height: 100vh; }
+      .sidebar { border-right: none; border-bottom: 1px solid var(--line); }
+    }
+
+    @media (max-width: 760px) {
+      .grid2, .grid3, .btn-row { grid-template-columns: 1fr; }
+      .topbar, .chat-stage, .composer { padding-left: 14px; padding-right: 14px; }
+      .bubble-wrap { max-width: 100%; }
+      .composer-bar { align-items: stretch; }
+      .composer-actions { width: 100%; }
+      .composer-actions > * { flex: 1; }
+      .session-toolbar { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-badge">K</div>
+        <div>
+          <h1>Kimiro Chat Lab</h1>
+          <p>AI 聊天测试工作台</p>
+        </div>
+      </div>
+
+      <section class="panel">
+        <h2>会话</h2>
+        <div class="session-toolbar">
+          <button id="btnNewSession" class="secondary" type="button">新建会话</button>
+          <button id="btnDeleteSession" class="secondary" type="button">删除会话</button>
+        </div>
+        <div id="sessionList" class="session-list"></div>
+      </section>
+
+      <section class="panel">
+        <h2>连接设置</h2>
+        <label>请求模式</label>
+        <div class="seg">
+          <label><input type="radio" name="mode" value="relay" checked /> 本地 relay</label>
+          <label><input type="radio" name="mode" value="direct" /> 浏览器直连</label>
+        </div>
+
+        <label for="baseUrl">目标 Base URL</label>
+        <input id="baseUrl" value="https://api-kimiro.zocomputer.io" />
+
+        <label for="apiKey">目标 API Key</label>
+        <input id="apiKey" type="password" placeholder="sk-..." />
+
+        <label for="systemPrompt">系统提示词</label>
+        <textarea id="systemPrompt">You are a helpful test assistant.</textarea>
+      </section>
+
+      <section class="panel">
+        <h2>请求控制</h2>
+        <div class="grid3">
+          <div>
+            <label for="timeoutMs">超时（ms）</label>
+            <input id="timeoutMs" type="number" min="1000" step="1000" value="45000" />
+          </div>
+          <div>
+            <label for="retryCount">重试次数</label>
+            <input id="retryCount" type="number" min="0" max="5" step="1" value="2" />
+          </div>
+          <div>
+            <label for="retryDelayMs">重试间隔（ms）</label>
+            <input id="retryDelayMs" type="number" min="0" step="500" value="1500" />
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button id="btnModels" class="secondary" type="button">拉取模型列表</button>
+          <button id="btnDiag" class="secondary" type="button">一键诊断</button>
+          <button id="btnClearChat" class="secondary" type="button">清空当前会话</button>
+          <button id="btnClear" class="secondary" type="button">清空输出</button>
+        </div>
+
+        <div class="tiny">
+          relay 使用现有 <code>/__relay/models</code> 与 <code>/__relay/chat</code>。<br />
+          direct 模式下 stream 为真实 SSE；relay 模式下 stream 展示最终响应。<br />
+          聊天输入框固定在页面底部，不会再丢失。
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>状态</h2>
+        <div id="status" class="status-box">等待操作…</div>
+        <label style="margin-top:12px;">诊断结果</label>
+        <div id="diag" class="diag-box">尚未诊断</div>
+        <div class="debug-panel">
+          <div class="debug-toggle">
+            <label style="margin:0;">调试输出</label>
+            <button id="btnToggleDebug" type="button">展开 / 收起</button>
+          </div>
+          <div id="debugStack" class="debug-stack hidden">
+            <div class="stream-panel">
+              <div class="stream-head">
+                <span>Stream 输出</span>
+                <span id="streamModeLabel">未开始</span>
+              </div>
+              <div class="stream-body" id="streamOutput">暂无流式输出</div>
+            </div>
+
+            <div class="raw-panel">
+              <div class="raw-head">
+                <span>原始输出</span>
+                <span id="rawModeLabel">最近一次请求</span>
+              </div>
+              <div class="raw-body" id="output">暂无输出</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h2 id="headerTitle">AI Chat</h2>
+          <p>持续对话、多会话切换、Chat / Stream / 诊断一体化测试</p>
+        </div>
+        <div class="top-pills">
+          <div class="model-pill">
+            <label for="modelSelectTop">Model:</label>
+            <select id="modelSelectTop">
+              <option value="zo:openai/gpt-5.5">zo:openai/gpt-5.5</option>
+            </select>
+            <input id="customModelTop" placeholder="自定义模型" />
+          </div>
+          <span class="pill" id="requestTiming">请求耗时: --</span>
+          <span class="pill" id="waitTiming">等待耗时: --</span>
+          <span class="pill" id="streamMeta">Stream 未开始</span>
+        </div>
+      </header>
+
+      <section class="chat-stage" id="chatStage">
+        <div class="chat-wrap">
+          <div class="chat-scroll" id="chatScroll">
+            <div class="welcome" id="welcomeCard">
+              <h3>开始一段 AI 对话</h3>
+              <p>
+                左侧切换或创建多个会话，右侧保持完整聊天体验。你可以直接输入消息，发送普通 Chat 或 Stream，
+                并保留每个会话的独立上下文与历史记录。
+              </p>
+            </div>
+            <div id="chatMessages"></div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="composer">
+        <div class="composer-inner">
+          <textarea id="chatInput" placeholder="输入消息，Enter 发送，Shift + Enter 换行"></textarea>
+          <div class="composer-bar">
+            <div class="composer-actions">
+              <button id="btnStream" class="ghost-btn" type="button">测试 Stream</button>
+              <button id="btnModelsInline" class="ghost-btn" type="button">刷新模型</button>
+            </div>
+            <button id="btnChat" class="primary-btn" type="button">发送消息</button>
+          </div>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const storeKeys = {
+      mode: 'kimiro_test_mode',
+      baseUrl: 'kimiro_test_base_url',
+      apiKey: 'kimiro_test_api_key',
+      systemPrompt: 'kimiro_test_system_prompt',
+      chatInput: 'kimiro_test_chat_input',
+      sessions: 'kimiro_test_sessions',
+      currentSessionId: 'kimiro_test_current_session_id',
+      modelCache: 'kimiro_test_model_cache',
+      timeoutMs: 'kimiro_test_timeout_ms',
+      retryCount: 'kimiro_test_retry_count',
+      retryDelayMs: 'kimiro_test_retry_delay_ms'
+    };
+
+    const ui = {
+      baseUrl: $('baseUrl'),
+      apiKey: $('apiKey'),
+      modelSelect: $('modelSelectTop'),
+      customModel: $('customModelTop'),
+      systemPrompt: $('systemPrompt'),
+      chatMessages: $('chatMessages'),
+      chatInput: $('chatInput'),
+      timeoutMs: $('timeoutMs'),
+      retryCount: $('retryCount'),
+      retryDelayMs: $('retryDelayMs'),
+      sessionList: $('sessionList'),
+      chatScroll: $('chatScroll'),
+      status: $('status'),
+      diag: $('diag'),
+      output: $('output'),
+      streamOutput: $('streamOutput'),
+      streamMeta: $('streamMeta'),
+      requestTiming: $('requestTiming'),
+      waitTiming: $('waitTiming'),
+      streamModeLabel: $('streamModeLabel'),
+      rawModeLabel: $('rawModeLabel'),
+      debugStack: $('debugStack'),
+      welcomeCard: $('welcomeCard'),
+      headerModel: $('headerModel'),
+      headerTitle: $('headerTitle')
+    };
+
+    let sessions = [];
+    let currentSessionId = null;
+    let modelCache = [];
+
+    function uid() {
+      return `s_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+    }
+
+    function nowTime() {
+      return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function buildTurnTimingMeta(timing, waitLabel = '等待耗时') {
+      if (!timing) return '';
+      const parts = [];
+      if (timing.totalMs != null) parts.push(`请求耗时 ${formatMs(timing.totalMs)}`);
+      if (timing.waitMs != null) parts.push(`${waitLabel} ${formatMs(timing.waitMs)}`);
+      return parts.join(' / ');
+    }
+
+    function updatePendingUserState(session, stateText, stateClass = 'loading') {
+      if (!session?.messages?.length) return;
+      const last = session.messages[session.messages.length - 1];
+      if (last?.role !== 'user') return;
+      last.pendingState = stateText;
+      last.pendingClass = stateClass;
+      touchSession(session);
+      saveForm();
+      renderSessionList();
+      renderChatHistory();
+    }
+
+    function clearPendingUserState(session) {
+      if (!session?.messages?.length) return;
+      const last = session.messages[session.messages.length - 1];
+      if (last?.role !== 'user') return;
+      delete last.pendingState;
+      delete last.pendingClass;
+      touchSession(session);
+    }
+
+    function nowStamp() {
+      return Date.now();
+    }
+
+    function getMode() {
+      return document.querySelector('input[name="mode"]:checked')?.value || 'relay';
+    }
+
+    function getModel() {
+      const session = getCurrentSession();
+      if (session?.customModel) return session.customModel.trim();
+      if (session?.selectedModel) return session.selectedModel;
+      return ui.customModel.value.trim() || ui.modelSelect.value;
+    }
+
+    function getTimeoutMs() {
+      return Math.max(1000, Number(ui.timeoutMs.value || 45000));
+    }
+
+    function getRetryCount() {
+      return Math.max(0, Number(ui.retryCount.value || 0));
+    }
+
+    function getRetryDelayMs() {
+      return Math.max(0, Number(ui.retryDelayMs.value || 0));
+    }
+
+    function getSystemPrompt() {
+      return ui.systemPrompt.value.trim() || 'You are a helpful test assistant.';
+    }
+
+    function getCurrentUserInput() {
+      return ui.chatInput.value.trim();
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function extractTextFromStructuredData(value) {
+      if (value == null) return '';
+      if (typeof value === 'string') return value;
+      if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+
+      if (Array.isArray(value)) {
+        const parts = value.map(item => extractTextFromStructuredData(item)).filter(Boolean);
+        return parts.join('\n').trim();
+      }
+
+      if (typeof value === 'object') {
+        const preferredKeys = [
+          'content', 'text', 'answer', 'response', 'output', 'message',
+          'result', 'final_answer', 'finalAnswer', 'reply'
+        ];
+
+        for (const key of preferredKeys) {
+          if (key in value) {
+            const extracted = extractTextFromStructuredData(value[key]);
+            if (extracted) return extracted;
+          }
+        }
+
+        if (Array.isArray(value.choices) && value.choices.length) {
+          const fromChoices = value.choices
+            .map(choice => extractTextFromStructuredData(choice?.message?.content ?? choice?.delta?.content ?? choice?.text ?? choice))
+            .filter(Boolean)
+            .join('\n')
+            .trim();
+          if (fromChoices) return fromChoices;
+        }
+
+        if (Array.isArray(value.messages) && value.messages.length) {
+          const fromMessages = value.messages.map(item => extractTextFromStructuredData(item)).filter(Boolean).join('\n').trim();
+          if (fromMessages) return fromMessages;
+        }
+
+        if (Array.isArray(value.data) && value.data.length) {
+          const fromData = value.data.map(item => extractTextFromStructuredData(item)).filter(Boolean).join('\n').trim();
+          if (fromData) return fromData;
+        }
+      }
+
+      return '';
+    }
+
+    function normalizeAssistantContent(rawContent) {
+      if (rawContent == null) return '';
+      if (typeof rawContent !== 'string') return String(rawContent ?? '');
+
+      const raw = rawContent.trim();
+      if (!raw) return '';
+
+      const candidates = [raw];
+
+      const fenced = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+      if (fenced?.[1]) candidates.push(fenced[1].trim());
+
+      const objectLike = raw.match(/(\{[\s\S]*\}|\[[\s\S]*\])$/);
+      if (objectLike?.[1]) candidates.push(objectLike[1].trim());
+
+      for (const candidate of candidates) {
+        try {
+          const parsed = JSON.parse(candidate);
+
+          if (typeof parsed === 'string') {
+            const nested = normalizeAssistantContent(parsed);
+            if (nested && nested !== parsed) return nested;
+          }
+
+          const extracted = extractTextFromStructuredData(parsed);
+          if (extracted) return extracted;
+        } catch {}
+      }
+
+      return rawContent;
+    }
+
+    function formatMs(ms) {
+      if (ms == null || Number.isNaN(ms)) return '--';
+      if (ms < 1000) return `${Math.round(ms)}ms`;
+      return `${(ms / 1000).toFixed(ms >= 10000 ? 1 : 2)}s`;
+    }
+
+    function getCurrentSession() {
+      return sessions.find(s => s.id === currentSessionId) || null;
+    }
+
+    function ensureSessions() {
+      if (!Array.isArray(sessions) || sessions.length === 0) {
+        const session = createSessionObject('新会话');
+        sessions = [session];
+        currentSessionId = session.id;
+      }
+      if (!sessions.some(s => s.id === currentSessionId)) {
+        currentSessionId = sessions[0].id;
+      }
+    }
+
+    function createSessionObject(title = '新会话') {
+      const ts = nowStamp();
+      return {
+        id: uid(),
+        title,
+        createdAt: ts,
+        updatedAt: ts,
+        messages: [],
+        selectedModel: (modelCache[0] && modelCache[0].id) || ui.modelSelect?.value || 'zo:openai/gpt-5.5',
+        customModel: ''
+      };
+    }
+
+    function renderModelOptions(list) {
+      const models = Array.isArray(list) && list.length ? list : [{ id: 'zo:openai/gpt-5.5' }];
+      modelCache = models.map(item => typeof item === 'string' ? { id: item } : item);
+      ui.modelSelect.innerHTML = modelCache.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.id)}</option>`).join('');
+    }
+
+    function loadModelCache() {
+      try {
+        const raw = localStorage.getItem(storeKeys.modelCache);
+        const cached = raw ? JSON.parse(raw) : null;
+        if (Array.isArray(cached) && cached.length) {
+          renderModelOptions(cached);
+          return;
+        }
+      } catch {}
+      renderModelOptions([{ id: 'zo:openai/gpt-5.5' }]);
+    }
+
+    function saveModelCache(list) {
+      localStorage.setItem(storeKeys.modelCache, JSON.stringify(list));
+    }
+
+    function touchSession(session) {
+      if (session) session.updatedAt = nowStamp();
+    }
+
+    function saveForm() {
+      const current = getCurrentSession();
+      if (current) {
+        current.selectedModel = ui.modelSelect.value || current.selectedModel || 'zo:openai/gpt-5.5';
+        current.customModel = ui.customModel.value.trim();
+      }
+      localStorage.setItem(storeKeys.mode, getMode());
+      localStorage.setItem(storeKeys.baseUrl, ui.baseUrl.value.trim());
+      localStorage.setItem(storeKeys.apiKey, ui.apiKey.value.trim());
+      localStorage.setItem(storeKeys.systemPrompt, ui.systemPrompt.value);
+      localStorage.setItem(storeKeys.chatInput, ui.chatInput.value);
+      localStorage.setItem(storeKeys.sessions, JSON.stringify(sessions));
+      localStorage.setItem(storeKeys.currentSessionId, currentSessionId || '');
+      localStorage.setItem(storeKeys.timeoutMs, String(getTimeoutMs()));
+      localStorage.setItem(storeKeys.retryCount, String(getRetryCount()));
+      localStorage.setItem(storeKeys.retryDelayMs, String(getRetryDelayMs()));
+      syncHeader();
+    }
+
+    function loadSaved() {
+      loadModelCache();
+      ui.baseUrl.value = localStorage.getItem(storeKeys.baseUrl) || ui.baseUrl.value;
+      ui.apiKey.value = localStorage.getItem(storeKeys.apiKey) || '';
+      ui.systemPrompt.value = localStorage.getItem(storeKeys.systemPrompt) || ui.systemPrompt.value;
+      ui.chatInput.value = localStorage.getItem(storeKeys.chatInput) || '';
+      ui.timeoutMs.value = localStorage.getItem(storeKeys.timeoutMs) || '45000';
+      ui.retryCount.value = localStorage.getItem(storeKeys.retryCount) || '2';
+      ui.retryDelayMs.value = localStorage.getItem(storeKeys.retryDelayMs) || '1500';
+      try {
+        const raw = localStorage.getItem(storeKeys.sessions);
+        sessions = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(sessions)) sessions = [];
+      } catch {
+        sessions = [];
+      }
+      currentSessionId = localStorage.getItem(storeKeys.currentSessionId) || null;
+      const mode = localStorage.getItem(storeKeys.mode) || 'relay';
+      const radio = document.querySelector(`input[name="mode"][value="${mode}"]`);
+      if (radio) radio.checked = true;
+      ensureSessions();
+      applySessionModelToUI();
+      renderSessionList();
+      renderChatHistory();
+      syncHeader();
+    }
+
+    function applySessionModelToUI() {
+      const session = getCurrentSession();
+      if (!session) return;
+      const available = Array.from(ui.modelSelect.options).map(opt => opt.value);
+      if (session.selectedModel && available.includes(session.selectedModel)) {
+        ui.modelSelect.value = session.selectedModel;
+      } else if (available.length) {
+        ui.modelSelect.value = available[0];
+      }
+      ui.customModel.value = session.customModel || '';
+    }
+
+    function syncHeader() {
+      const session = getCurrentSession();
+      ui.headerTitle.textContent = session ? session.title : 'AI Chat';
+    }
+
+    function setStatus(text, kind = '') {
+      ui.status.className = `status-box ${kind}`.trim();
+      ui.status.textContent = text;
+    }
+
+    function setDiag(text, kind = '') {
+      ui.diag.className = `diag-box ${kind}`.trim();
+      ui.diag.textContent = text;
+    }
+
+    function setOutput(value, label = '最近一次请求') {
+      ui.rawModeLabel.textContent = label;
+      ui.output.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    }
+
+    function resetTimings() {
+      ui.requestTiming.textContent = '请求耗时: --';
+      ui.waitTiming.textContent = '等待耗时: --';
+    }
+
+    function setTimings({ totalMs = null, waitMs = null, label = '' } = {}) {
+      ui.requestTiming.textContent = `请求耗时: ${formatMs(totalMs)}`;
+      ui.waitTiming.textContent = `${label || '等待耗时'}: ${formatMs(waitMs)}`;
+    }
+
+    function resetStream() {
+      ui.streamOutput.textContent = '暂无流式输出';
+      ui.streamMeta.textContent = 'Stream 未开始';
+      ui.streamModeLabel.textContent = '未开始';
+      resetTimings();
+    }
+
+    function setStreamMeta(text) {
+      ui.streamMeta.textContent = text;
+      ui.streamModeLabel.textContent = text;
+    }
+
+    function appendStream(text) {
+      if (ui.streamOutput.textContent === '暂无流式输出') ui.streamOutput.textContent = '';
+      ui.streamOutput.textContent += text;
+      ui.streamOutput.scrollTop = ui.streamOutput.scrollHeight;
+    }
+
+    function scrollChatToBottom() {
+      requestAnimationFrame(() => {
+        if (!ui.chatScroll) return;
+        ui.chatScroll.scrollTop = ui.chatScroll.scrollHeight;
+      });
+    }
+
+    function parseMaybeJson(text) {
+      try { return text ? JSON.parse(text) : null; } catch { return text; }
+    }
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function describeFetchError(error, mode, timeoutMs) {
+      if (error?.name === 'AbortError') return `请求超时（${timeoutMs}ms）`;
+      if (mode === 'direct') return '浏览器直连失败。通常是 CORS、Cloudflare、WAF、证书或网络错误，浏览器常只显示 Load failed。';
+      return error?.message || String(error);
+    }
+
+    function extractBodyText(result) {
+      const body = result?.body?.body ?? result?.body;
+      if (typeof body === 'string') return body;
+      return JSON.stringify(body ?? '', null, 2);
+    }
+
+    function diagnoseFromResult(result, mode, errorMessage = '') {
+      const bodyText = extractBodyText(result);
+      const combined = `${errorMessage}\n${bodyText}`.toLowerCase();
+      const upstream = result?.body?.upstream_status || result?.status || 0;
+
+      if (combined.includes('error code: 1010') || combined.includes('access denied')) return { type: '403/1010', detail: 'Cloudflare WAF/策略拦截。' };
+      if (upstream === 521 || combined.includes('web server is down')) return { type: '521', detail: 'Cloudflare 可达，但源站不可达或拒绝连接。' };
+      if (upstream === 403) return { type: '403', detail: '目标服务拒绝访问，可能是 WAF、权限或区域限制。' };
+      if (combined.includes('cors') || (mode === 'direct' && combined.includes('load failed'))) return { type: 'CORS/浏览器拦截', detail: '浏览器未拿到真实响应，建议切换本地 relay。' };
+      if (combined.includes('timeout') || combined.includes('超时') || combined.includes('aborterror')) return { type: '超时', detail: '请求在设定时间内未完成。' };
+      if (upstream >= 500) return { type: `HTTP ${upstream}`, detail: '服务端错误或上游不稳定。' };
+      if (upstream >= 400) return { type: `HTTP ${upstream}`, detail: '请求已到达服务端，但返回了客户端错误。' };
+      return { type: '未知/正常', detail: '未发现 403/1010/521/CORS/超时 特征。' };
+    }
+
+    function summarizeTitle(text) {
+      const clean = String(text || '').replace(/\s+/g, ' ').trim();
+      return clean ? clean.slice(0, 18) : '新会话';
+    }
+
+    function renderSessionList() {
+      ensureSessions();
+      ui.sessionList.innerHTML = sessions
+        .slice()
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .map(session => `
+          <div class="session-item ${session.id === currentSessionId ? 'active' : ''}" data-session-id="${session.id}">
+            <div class="session-item-head">
+              <div class="session-title">${escapeHtml(session.title || '新会话')}</div>
+              <button class="session-delete" type="button" data-delete-session-id="${session.id}" title="删除会话">×</button>
+            </div>
+            <div class="session-meta">
+              <span>${session.messages?.length || 0} 条消息</span>
+              <span>${new Date(session.updatedAt).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })}</span>
+            </div>
+          </div>
+        `).join('');
+    }
+
+    function renderChatHistory() {
+      ensureSessions();
+      const session = getCurrentSession();
+      const messages = session?.messages || [];
+      applySessionModelToUI();
+      ui.welcomeCard.classList.toggle('hidden', messages.length > 0);
+
+      if (!messages.length) {
+        ui.chatMessages.innerHTML = '';
+        syncHeader();
+        return;
+      }
+
+      ui.chatMessages.innerHTML = messages.map((msg, i) => {
+        const bubbleClass = msg.renderAsJson ? 'bubble json' : 'bubble';
+        const copyBtn = msg.content ? `<div class="msg-actions"><button class="msg-copy" type="button" data-copy-text="${encodeURIComponent(msg.content)}">复制</button></div>` : '';
+        return `
+        <article class="msg ${msg.role}">
+          <div class="avatar">${msg.role === 'assistant' ? 'AI' : msg.role === 'user' ? '你' : 'SYS'}</div>
+          <div class="bubble-wrap">
+            <div class="meta">${msg.role} · ${msg.time || '--:--'} · #${i + 1}</div>
+            ${msg.pendingState ? `<div class="meta-state ${escapeHtml(msg.pendingClass || 'loading')}">${escapeHtml(msg.pendingState)}</div>` : ''}
+            ${msg.timingText ? `<div class="meta-sub">${escapeHtml(msg.timingText)}</div>` : ''}
+            <div class="${bubbleClass}">${escapeHtml(msg.displayContent || msg.content || '')}</div>
+            ${copyBtn}
+          </div>
+        </article>
+      `}).join('');
+
+      syncHeader();
+      scrollChatToBottom();
+    }
+
+    function createNewSession() {
+      const session = createSessionObject(`新会话 ${sessions.length + 1}`);
+      sessions.unshift(session);
+      currentSessionId = session.id;
+      ui.chatInput.value = '';
+      saveForm();
+      renderSessionList();
+      renderChatHistory();
+      resetStream();
+      setStatus('已新建会话。', 'ok');
+    }
+
+    function switchSession(sessionId) {
+      currentSessionId = sessionId;
+      ui.chatInput.value = '';
+      applySessionModelToUI();
+      saveForm();
+      renderSessionList();
+      renderChatHistory();
+      resetStream();
+      setStatus('已切换会话。');
+    }
+
+    function deleteSessionById(sessionId) {
+      const target = sessions.find(s => s.id === sessionId);
+      if (!target) return;
+
+      if (sessions.length <= 1) {
+        const only = getCurrentSession();
+        if (only) {
+          only.messages = [];
+          only.title = '新会话';
+          touchSession(only);
+        }
+        ui.chatInput.value = '';
+        saveForm();
+        renderSessionList();
+        renderChatHistory();
+        setStatus('已清空当前唯一会话。', 'warn');
+        return;
+      }
+
+      sessions = sessions.filter(s => s.id !== sessionId);
+      if (currentSessionId === sessionId) {
+        currentSessionId = sessions[0].id;
+      }
+      ui.chatInput.value = '';
+      saveForm();
+      renderSessionList();
+      renderChatHistory();
+      resetStream();
+      setStatus(`已删除会话：${target.title || '未命名会话'}`, 'warn');
+    }
+
+    function deleteCurrentSession() {
+      deleteSessionById(currentSessionId);
+    }
+
+    function clearCurrentSessionMessages() {
+      const session = getCurrentSession();
+      if (!session) return;
+      session.messages = [];
+      session.title = '新会话';
+      touchSession(session);
+      ui.chatInput.value = '';
+      saveForm();
+      renderSessionList();
+      renderChatHistory();
+    }
+
+    function getSessionMessagesForRequest() {
+      const session = getCurrentSession();
+      return session ? session.messages.map(({ role, content }) => ({ role, content })) : [];
+    }
+
+    function buildChatPayload({ stream = false, messages = null } = {}) {
+      return {
+        model: getModel(),
+        messages: messages || [
+          { role: 'system', content: getSystemPrompt() },
+          ...getSessionMessagesForRequest()
+        ],
+        temperature: 0,
+        stream
+      };
+    }
+
+    async function requestDirect(path, options = {}, timeoutMs = getTimeoutMs()) {
+      const baseUrl = ui.baseUrl.value.trim().replace(/\/+$/, '');
+      const apiKey = ui.apiKey.value.trim();
+      if (!baseUrl) throw new Error('Base URL 不能为空');
+      if (!apiKey) throw new Error('API Key 不能为空');
+
+      const startedAt = performance.now();
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(baseUrl + path, {
+          ...options,
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+            ...(options.headers || {})
+          }
+        });
+        const headersAt = performance.now();
+        const text = await res.text();
+        const endedAt = performance.now();
+        return {
+          ok: res.ok,
+          status: res.status,
+          statusText: res.statusText,
+          headers: Object.fromEntries(res.headers.entries()),
+          body: parseMaybeJson(text),
+          timing: { startedAt, headersAt, endedAt, waitMs: headersAt - startedAt, totalMs: endedAt - startedAt }
+        };
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    async function requestRelay(relayPath, body, timeoutMs = getTimeoutMs()) {
+      const startedAt = performance.now();
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(relayPath, {
+          method: 'POST',
+          signal: controller.signal,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const headersAt = performance.now();
+        const text = await res.text();
+        const endedAt = performance.now();
+        return {
+          ok: res.ok,
+          status: res.status,
+          statusText: res.statusText,
+          headers: Object.fromEntries(res.headers.entries()),
+          body: parseMaybeJson(text),
+          timing: { startedAt, headersAt, endedAt, waitMs: headersAt - startedAt, totalMs: endedAt - startedAt }
+        };
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    async function requestWithRetry(taskName, fn, onAttempt = null) {
+      const retryCount = getRetryCount();
+      const retryDelayMs = getRetryDelayMs();
+      let lastError;
+      for (let attempt = 0; attempt <= retryCount; attempt++) {
+        try {
+          if (attempt > 0) setStatus(`${taskName}：第 ${attempt + 1} 次尝试中...`, 'warn');
+          if (onAttempt) onAttempt(attempt);
+          const result = await fn(attempt);
+          return { result, attempt };
+        } catch (error) {
+          lastError = error;
+          if (attempt >= retryCount) break;
+          await sleep(retryDelayMs);
+        }
+      }
+      throw lastError;
+    }
+
+    async function loadModels() {
+      saveForm();
+      const mode = getMode();
+      const timeoutMs = getTimeoutMs();
+      setStatus(`正在请求模型列表（${mode === 'relay' ? '本地 relay' : '浏览器直连'}，timeout=${timeoutMs}ms）...`);
+      setOutput('加载中...', '模型列表');
+      resetTimings();
+      try {
+        const { result, attempt } = await requestWithRetry('模型列表', () => (
+          mode === 'relay'
+            ? requestRelay('/__relay/models', { baseUrl: ui.baseUrl.value.trim(), apiKey: ui.apiKey.value.trim() }, timeoutMs)
+            : requestDirect('/v1/models', { method: 'GET' }, timeoutMs)
+        ));
+
+        setOutput(result, '模型列表');
+        setTimings({ totalMs: result.timing?.totalMs, waitMs: result.timing?.waitMs });
+        const payload = result.body?.body?.data || result.body?.data || [];
+
+        if (!result.ok) {
+          const d = diagnoseFromResult(result, mode);
+          setStatus(`模型列表请求失败: HTTP ${result.status} / ${d.type}`, 'err');
+          setDiag(`[模型列表]\n类型：${d.type}\n说明：${d.detail}`, 'err');
+          return;
+        }
+
+        const list = Array.isArray(payload) ? payload : [];
+        if (!list.length) {
+          renderModelOptions([{ id: 'zo:openai/gpt-5.5' }]);
+          setStatus('模型列表为空，但接口返回成功。', 'warn');
+          return;
+        }
+
+        renderModelOptions(list);
+        saveModelCache(list);
+        const current = getCurrentSession();
+        if (current) {
+          const available = list.map(item => item.id);
+          if (current.selectedModel && available.includes(current.selectedModel)) {
+            ui.modelSelect.value = current.selectedModel;
+          } else if (!current.customModel) {
+            current.selectedModel = list[0]?.id || current.selectedModel;
+            ui.modelSelect.value = current.selectedModel;
+          }
+        }
+        saveForm();
+        setStatus(`模型列表加载成功，共 ${list.length} 个模型；尝试次数 ${attempt + 1}。`, 'ok');
+      } catch (error) {
+        const msg = describeFetchError(error, mode, timeoutMs);
+        const d = diagnoseFromResult(null, mode, msg);
+        setStatus(`模型列表请求异常: ${msg}`, 'err');
+        setDiag(`[模型列表]\n类型：${d.type}\n说明：${d.detail}`, 'err');
+        resetTimings();
+        setOutput(String(error.stack || error), '模型列表异常');
+      }
+    }
+
+    async function testChat() {
+      saveForm();
+      const session = getCurrentSession();
+      const mode = getMode();
+      const timeoutMs = getTimeoutMs();
+      const model = getModel();
+      const userInput = getCurrentUserInput();
+      if (!session) return;
+      if (!userInput) {
+        setStatus('发送消息失败：请输入聊天内容', 'err');
+        return;
+      }
+
+      const pendingUser = { role: 'user', content: userInput, time: nowTime() };
+      session.messages.push(pendingUser);
+      if (session.messages.length === 1) session.title = summarizeTitle(userInput);
+      touchSession(session);
+      ui.chatInput.value = '';
+      saveForm();
+      renderSessionList();
+      renderChatHistory();
+      updatePendingUserState(session, '请求发送中…', 'loading');
+
+      setStatus(`正在发送消息：${model}（timeout=${timeoutMs}ms，retry=${getRetryCount()}）...`);
+      setOutput('加载中...', 'Chat');
+      resetTimings();
+
+      try {
+        const payload = buildChatPayload({
+          stream: false,
+          messages: [
+            { role: 'system', content: getSystemPrompt() },
+            ...getSessionMessagesForRequest()
+          ]
+        });
+
+        const { result, attempt } = await requestWithRetry(
+          'Chat',
+          () => (
+            mode === 'relay'
+              ? requestRelay('/__relay/chat', { baseUrl: ui.baseUrl.value.trim(), apiKey: ui.apiKey.value.trim(), payload }, timeoutMs)
+              : requestDirect('/v1/chat/completions', { method: 'POST', body: JSON.stringify(payload) }, timeoutMs)
+          ),
+          (attempt) => {
+            updatePendingUserState(session, attempt === 0 ? '请求发送中…' : `第 ${attempt + 1} 次重试中…`, 'loading');
+          }
+        );
+        clearPendingUserState(session);
+
+        setOutput(result, 'Chat');
+        setTimings({ totalMs: result.timing?.totalMs, waitMs: result.timing?.waitMs });
+        const chatBody = result.body?.body || result.body;
+
+        if (!result.ok) {
+          const d = diagnoseFromResult(result, mode);
+          session.messages.pop();
+          ui.chatInput.value = userInput;
+          touchSession(session);
+          saveForm();
+          renderSessionList();
+          renderChatHistory();
+          setStatus(`Chat 请求失败: HTTP ${result.status} / ${d.type}`, 'err');
+          setDiag(`[Chat]\n类型：${d.type}\n说明：${d.detail}`, 'err');
+          return;
+        }
+
+        const rawMessage = chatBody?.choices?.[0]?.message?.content;
+        const message = normalizeAssistantContent(rawMessage);
+        if (message) {
+          session.messages.push({
+            role: 'assistant',
+            content: rawMessage || message,
+            displayContent: message,
+            time: nowTime(),
+            timingText: buildTurnTimingMeta(result.timing, '响应耗时')
+          });
+          touchSession(session);
+          saveForm();
+          renderSessionList();
+          renderChatHistory();
+        }
+        setStatus(`消息发送成功；尝试次数 ${attempt + 1}。${message ? 'AI 已回复。' : '接口成功，但未取到标准 message.content。'}`, 'ok');
+      } catch (error) {
+        updatePendingUserState(session, error?.name === 'AbortError' ? '请求超时' : '请求失败', error?.name === 'AbortError' ? 'timeout' : 'error');
+        ui.chatInput.value = userInput;
+        touchSession(session);
+        saveForm();
+        renderSessionList();
+        renderChatHistory();
+        const msg = describeFetchError(error, mode, timeoutMs);
+        const d = diagnoseFromResult(null, mode, msg);
+        setStatus(`Chat 请求异常: ${msg}`, 'err');
+        setDiag(`[Chat]\n类型：${d.type}\n说明：${d.detail}`, 'err');
+        resetTimings();
+        setOutput(String(error.stack || error), 'Chat 异常');
+      }
+    }
+
+    async function testStream() {
+      saveForm();
+      resetStream();
+      const session = getCurrentSession();
+      const mode = getMode();
+      const timeoutMs = getTimeoutMs();
+      const baseUrl = ui.baseUrl.value.trim().replace(/\/+$/, '');
+      const apiKey = ui.apiKey.value.trim();
+      const userInput = getCurrentUserInput();
+
+      if (!session) return;
+      if (!baseUrl) return setStatus('Stream 测试失败：Base URL 不能为空', 'err');
+      if (!apiKey) return setStatus('Stream 测试失败：API Key 不能为空', 'err');
+      if (!userInput) return setStatus('Stream 测试失败：请输入聊天内容', 'err');
+
+      const pendingUser = { role: 'user', content: userInput, time: nowTime() };
+      session.messages.push(pendingUser);
+      if (session.messages.length === 1) session.title = summarizeTitle(userInput);
+      touchSession(session);
+      ui.chatInput.value = '';
+      saveForm();
+      renderSessionList();
+      renderChatHistory();
+      updatePendingUserState(session, '等待响应中…', 'loading');
+
+      const payload = buildChatPayload({
+        stream: true,
+        messages: [
+          { role: 'system', content: getSystemPrompt() },
+          ...getSessionMessagesForRequest()
+        ]
+      });
+
+      setStatus(`正在测试 Stream（${mode === 'relay' ? 'relay 模式' : '浏览器直连'}）...`);
+      setStreamMeta(`运行中 / timeout=${timeoutMs}ms`);
+      setOutput('加载中...', 'Stream');
+      resetTimings();
+
+      try {
+        if (mode === 'relay') {
+          updatePendingUserState(session, '等待响应中…', 'loading');
+          const result = await requestRelay('/__relay/chat', { baseUrl, apiKey, payload }, timeoutMs);
+          clearPendingUserState(session);
+          setOutput(result, 'Stream / relay');
+          setTimings({ totalMs: result.timing?.totalMs, waitMs: result.timing?.waitMs, label: '等待耗时' });
+
+          if (!result.ok) {
+            const d = diagnoseFromResult(result, mode);
+            if (session.messages[session.messages.length - 1] === pendingUser) session.messages.pop();
+            ui.chatInput.value = userInput;
+            touchSession(session);
+            saveForm();
+            renderSessionList();
+            renderChatHistory();
+            setStreamMeta(`失败 / ${d.type}`);
+            setStatus(`Stream 测试失败: HTTP ${result.status} / ${d.type}`, 'err');
+            setDiag(`[Stream]\n类型：${d.type}\n说明：${d.detail}`, 'err');
+            return;
+          }
+
+          const body = result.body?.body || result.body;
+          const rawMessage = body?.choices?.[0]?.message?.content || JSON.stringify(body, null, 2);
+          const message = normalizeAssistantContent(rawMessage);
+          appendStream(message);
+          session.messages.push({
+            role: 'assistant',
+            content: rawMessage,
+            displayContent: message,
+            time: nowTime(),
+            timingText: buildTurnTimingMeta(result.timing, '响应耗时')
+          });
+          touchSession(session);
+          saveForm();
+          renderSessionList();
+          renderChatHistory();
+          setStreamMeta('完成（relay 显示最终响应）');
+          setStatus('Stream 测试完成：relay 模式当前展示最终响应。', 'warn');
+          return;
+        }
+
+        const controller = new AbortController();
+        const startedAt = performance.now();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const res = await fetch(baseUrl + '/v1/chat/completions', {
+          method: 'POST',
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify(payload)
+        });
+        const headersAt = performance.now();
+        updatePendingUserState(session, '响应已返回，等待流开始…', 'loading');
+
+        setOutput({ ok: res.ok, status: res.status, statusText: res.statusText, headers: Object.fromEntries(res.headers.entries()) }, 'Stream / direct');
+
+        if (!res.ok) {
+          const text = await res.text();
+          const result = { ok: false, status: res.status, body: parseMaybeJson(text) };
+          const d = diagnoseFromResult(result, mode);
+          if (session.messages[session.messages.length - 1] === pendingUser) session.messages.pop();
+          ui.chatInput.value = userInput;
+          touchSession(session);
+          saveForm();
+          renderSessionList();
+          renderChatHistory();
+          setStreamMeta(`失败 / ${d.type}`);
+          setStatus(`Stream 请求失败: HTTP ${res.status} / ${d.type}`, 'err');
+          setDiag(`[Stream]\n类型：${d.type}\n说明：${d.detail}`, 'err');
+          setTimings({ totalMs: performance.now() - startedAt, waitMs: headersAt - startedAt, label: '等待耗时' });
+          clearTimeout(timeout);
+          return;
+        }
+
+        if (!res.body) {
+          if (session.messages[session.messages.length - 1] === pendingUser) session.messages.pop();
+          ui.chatInput.value = userInput;
+          touchSession(session);
+          saveForm();
+          renderSessionList();
+          renderChatHistory();
+          clearTimeout(timeout);
+          setStreamMeta('失败 / 无流');
+          setStatus('Stream 请求成功，但浏览器未提供可读流。', 'warn');
+          return;
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let tokenCount = 0;
+        let assistantText = '';
+        let firstChunkAt = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (firstChunkAt == null) {
+            firstChunkAt = performance.now();
+            updatePendingUserState(session, '流式接收中…', 'streaming');
+            setTimings({ totalMs: null, waitMs: firstChunkAt - startedAt, label: '首包等待' });
+          }
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n');
+          buffer = parts.pop() || '';
+
+          for (const line of parts) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+            const data = trimmed.slice(5).trim();
+            if (data === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(data);
+              const delta = parsed?.choices?.[0]?.delta?.content;
+              if (delta) {
+                assistantText += delta;
+                appendStream(delta);
+                tokenCount += 1;
+                setStreamMeta(`流式接收中 / chunk=${tokenCount}`);
+              }
+            } catch {
+              appendStream(`\n[SSE] ${data}\n`);
+            }
+          }
+        }
+
+        clearTimeout(timeout);
+        clearPendingUserState(session);
+        const endedAt = performance.now();
+        setTimings({ totalMs: endedAt - startedAt, waitMs: (firstChunkAt || headersAt) - startedAt, label: firstChunkAt ? '首包等待' : '等待耗时' });
+        if (assistantText) {
+          const normalizedStreamText = normalizeAssistantContent(assistantText);
+          session.messages.push({
+            role: 'assistant',
+            content: assistantText,
+            displayContent: normalizedStreamText,
+            time: nowTime(),
+            timingText: buildTurnTimingMeta({
+              totalMs: endedAt - startedAt,
+              waitMs: (firstChunkAt || headersAt) - startedAt
+            }, firstChunkAt ? '首包等待' : '响应耗时')
+          });
+          touchSession(session);
+          saveForm();
+          renderSessionList();
+          renderChatHistory();
+        }
+        setStreamMeta(`完成 / chunk=${tokenCount}`);
+        setStatus(tokenCount > 0 ? 'Stream 测试成功，已收到流式增量。' : 'Stream 已结束，但未解析到 content 增量。', tokenCount > 0 ? 'ok' : 'warn');
+      } catch (error) {
+        updatePendingUserState(session, error?.name === 'AbortError' ? '请求超时' : '流式请求失败', error?.name === 'AbortError' ? 'timeout' : 'error');
+        ui.chatInput.value = userInput;
+        touchSession(session);
+        saveForm();
+        renderSessionList();
+        renderChatHistory();
+        const msg = describeFetchError(error, mode, timeoutMs);
+        const d = diagnoseFromResult(null, mode, msg);
+        setStreamMeta(`异常 / ${d.type}`);
+        setStatus(`Stream 请求异常: ${msg}`, 'err');
+        setDiag(`[Stream]\n类型：${d.type}\n说明：${d.detail}`, 'err');
+        resetTimings();
+        appendStream(`\n[ERROR] ${msg}\n`);
+      }
+    }
+
+    async function runDiagnosis() {
+      saveForm();
+      setDiag('诊断中...');
+      const mode = getMode();
+      const timeoutMs = getTimeoutMs();
+      const results = [];
+
+      async function probe(name, task) {
+        try {
+          const result = await task();
+          const d = diagnoseFromResult(result, mode);
+          results.push(`- ${name}: ${d.type} / ${d.detail}`);
+          return { ok: true, result, diagnosis: d };
+        } catch (error) {
+          const msg = describeFetchError(error, mode, timeoutMs);
+          const d = diagnoseFromResult(null, mode, msg);
+          results.push(`- ${name}: ${d.type} / ${d.detail}`);
+          return { ok: false, error: msg, diagnosis: d };
+        }
+      }
+
+      const modelProbe = await probe('模型列表', () => (
+        mode === 'relay'
+          ? requestRelay('/__relay/models', { baseUrl: ui.baseUrl.value.trim(), apiKey: ui.apiKey.value.trim() }, timeoutMs)
+          : requestDirect('/v1/models', { method: 'GET' }, timeoutMs)
+      ));
+
+      const chatProbe = await probe('Chat', () => (
+        mode === 'relay'
+          ? requestRelay('/__relay/chat', {
+              baseUrl: ui.baseUrl.value.trim(),
+              apiKey: ui.apiKey.value.trim(),
+              payload: buildChatPayload({
+                stream: false,
+                messages: [
+                  { role: 'system', content: getSystemPrompt() },
+                  ...getSessionMessagesForRequest(),
+                  { role: 'user', content: 'Reply with OK only.' }
+                ]
+              })
+            }, timeoutMs)
+          : requestDirect('/v1/chat/completions', {
+              method: 'POST',
+              body: JSON.stringify(buildChatPayload({
+                stream: false,
+                messages: [
+                  { role: 'system', content: getSystemPrompt() },
+                  ...getSessionMessagesForRequest(),
+                  { role: 'user', content: 'Reply with OK only.' }
+                ]
+              }))
+            }, timeoutMs)
+      ));
+
+      let finalType = '未知/正常';
+      let finalDetail = '未发现明显异常。';
+      const diagnoses = [modelProbe.diagnosis?.type, chatProbe.diagnosis?.type].filter(Boolean);
+      for (const priority of ['403/1010', '521', '403', 'CORS/浏览器拦截', '超时']) {
+        if (diagnoses.includes(priority)) {
+          finalType = priority;
+          finalDetail = (modelProbe.diagnosis?.type === priority ? modelProbe.diagnosis.detail : chatProbe.diagnosis.detail) || finalDetail;
+          break;
+        }
+      }
+      setDiag(`最终判断：${finalType}\n说明：${finalDetail}\n\n明细：\n${results.join('\n')}`, finalType === '未知/正常' ? 'ok' : 'err');
+      setStatus(`诊断完成：${finalType}`, finalType === '未知/正常' ? 'ok' : 'err');
+    }
+
+    function bindEvents() {
+      $('btnModels').addEventListener('click', loadModels);
+      $('btnModelsInline').addEventListener('click', loadModels);
+      $('btnChat').addEventListener('click', testChat);
+      $('btnStream').addEventListener('click', testStream);
+      $('btnDiag').addEventListener('click', runDiagnosis);
+      $('btnNewSession').addEventListener('click', createNewSession);
+      $('btnDeleteSession').addEventListener('click', deleteCurrentSession);
+      $('btnClearChat').addEventListener('click', () => {
+        clearCurrentSessionMessages();
+        setStatus('当前会话已清空。', 'warn');
+      });
+      $('btnClear').addEventListener('click', () => {
+        setStatus('输出已清空。');
+        setDiag('尚未诊断');
+        setOutput('暂无输出');
+        resetStream();
+      });
+      $('btnToggleDebug').addEventListener('click', () => {
+        ui.debugStack.classList.toggle('hidden');
+      });
+
+      ui.sessionList.addEventListener('click', (event) => {
+        const deleteBtn = event.target.closest('[data-delete-session-id]');
+        if (deleteBtn) {
+          event.stopPropagation();
+          deleteSessionById(deleteBtn.dataset.deleteSessionId);
+          return;
+        }
+        const item = event.target.closest('.session-item');
+        if (!item) return;
+        switchSession(item.dataset.sessionId);
+      });
+
+      ui.chatMessages.addEventListener('click', async (event) => {
+        const copyBtn = event.target.closest('[data-copy-text]');
+        if (!copyBtn) return;
+        try {
+          await navigator.clipboard.writeText(decodeURIComponent(copyBtn.dataset.copyText || ''));
+          setStatus('消息已复制。', 'ok');
+        } catch {
+          setStatus('复制失败，请检查浏览器权限。', 'err');
+        }
+      });
+
+      document.addEventListener('input', (event) => {
+        if (event.target === ui.customModel) {
+          const session = getCurrentSession();
+          if (session) session.customModel = ui.customModel.value.trim();
+        }
+        saveForm();
+      });
+      document.addEventListener('change', (event) => {
+        if (event.target === ui.modelSelect) {
+          const session = getCurrentSession();
+          if (session) session.selectedModel = ui.modelSelect.value;
+        }
+        saveForm();
+      });
+
+      ui.chatInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          testChat();
+        }
+      });
+    }
+
+    loadSaved();
+    bindEvents();
+    resetStream();
+    resetTimings();
+    scrollChatToBottom();
+  </script>
+</body>
+</html>
