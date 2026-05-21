@@ -2567,13 +2567,23 @@ const server = http.createServer((req, res) => {
         'Content-Type, Authorization, x-api-key, anthropic-api-key, x-conversation-id'
     );
 
-    if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
-
-    if (!checkAuth(req, res)) return;
-
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
     const rawPath = url.pathname;
+
+    if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
+
+    if (req.method === 'GET' && rawPath === '/healthz') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+            status: 'ok',
+            service: 'zo2api',
+            uptime: Math.floor(process.uptime()),
+            timestamp: ts()
+        }));
+    }
+
+    if (!checkAuth(req, res)) return;
 
     let path = rawPath;
 

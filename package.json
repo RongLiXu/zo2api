@@ -1,0 +1,15 @@
+{
+  "name": "zo2api",
+  "version": "1.0.0",
+  "description": "Zo Computer API reverse proxy with OpenAI and Anthropic compatible endpoints.",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "start:local": "./scripts/start.sh",
+    "deploy": "./scripts/deploy.sh"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

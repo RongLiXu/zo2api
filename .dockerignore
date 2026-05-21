@@ -1,0 +1,13 @@
+.git
+.gitignore
+.DS_Store
+.env
+.env.*
+!.env.example
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+test-page.html
+ticket-app-hifi.html

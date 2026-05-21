@@ -1,0 +1,22 @@
+services:
+  zo2api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: zo2api:latest
+    container_name: zo2api
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://127.0.0.1:' + (process.env.PORT || 8000) + '/healthz', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
