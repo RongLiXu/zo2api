@@ -13,7 +13,8 @@ This image runs `zo2api`, a lightweight Node.js gateway that forwards requests t
 - Tool/function call conversion
 - Proxy API key protection
 - Built-in unauthenticated health check at `GET /healthz`
-- Multi-arch images for `linux/amd64` and `linux/arm64`
+- Multi-arch Linux images for `linux/amd64` and `linux/arm64`
+- Runs on macOS through Docker Desktop, including Intel Mac and Apple Silicon Mac
 
 ## Quick Start
 
@@ -33,6 +34,27 @@ Check the service:
 
 ```bash
 curl http://localhost:8000/healthz
+```
+
+## macOS Support
+
+Docker Hub does not publish native macOS container images for this project. On macOS, run the Linux image through Docker Desktop.
+
+Supported Mac setups:
+
+- Intel Mac uses the `linux/amd64` image.
+- Apple Silicon Mac uses the `linux/arm64` image.
+- Docker Desktop automatically selects the right platform for most users.
+
+If you need to force a platform manually:
+
+```bash
+docker run --platform linux/arm64 -d \
+  --name zo2api \
+  -p 8000:8000 \
+  -e ZO_ACCESS_TOKEN=zo_sk_your_token_here \
+  -e PROXY_API_KEY=sk-proxy-gateway-v1 \
+  your-dockerhub-user/zo2api:latest
 ```
 
 List models:

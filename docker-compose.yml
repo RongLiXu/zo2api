@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: zo2api:latest
+    image: shyurongli/zo2api:latest
     container_name: zo2api
     restart: unless-stopped
     env_file:

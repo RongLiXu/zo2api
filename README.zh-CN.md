@@ -145,6 +145,15 @@ docker logs -f zo2api
 
 Docker Hub 仓库介绍会在每次 release 时从 `DOCKER.md` 自动同步。Docker 专用的运行方式、tag 和环境变量说明应维护在该文件中，这样 Docker Hub 页面会与发布镜像保持一致。
 
+### macOS Docker 支持
+
+发布的 Docker 镜像可通过 Docker Desktop 在 macOS 上运行：
+
+- Intel Mac：`linux/amd64`
+- Apple Silicon Mac：`linux/arm64`
+
+Docker Desktop 通常会自动选择正确镜像。本项目不发布原生 `darwin` 容器镜像；macOS 的运行方式是通过 Docker Desktop 运行 Linux 容器。
+
 ## 环境变量
 
 | 变量 | 必填 | 默认值 | 说明 |

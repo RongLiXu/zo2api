@@ -145,6 +145,15 @@ docker logs -f zo2api
 
 The Docker Hub repository description is generated from `DOCKER.md` during every release. Keep Docker-specific usage, tag, and environment-variable documentation there so Docker Hub stays in sync with the released image.
 
+### macOS Docker Support
+
+The published Docker image supports macOS through Docker Desktop:
+
+- Intel Mac: `linux/amd64`
+- Apple Silicon Mac: `linux/arm64`
+
+Docker Desktop usually selects the correct image automatically. This project does not publish native `darwin` container images; the macOS runtime path is Docker Desktop running Linux containers.
+
 ## Environment Variables
 
 | Variable | Required | Default | Description |
