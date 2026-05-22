@@ -377,6 +377,101 @@ function buildInputFromAnthropic(system, messages) {
 
 }
 
+const CACHE_PASSTHROUGH_KEYS = [
+    'cache_control',
+    'cacheControl',
+    'prompt_cache',
+    'promptCache',
+    'prompt_caching',
+    'promptCaching',
+    'cache',
+    'cache_key',
+    'cacheKey',
+    'cache_ttl',
+    'cacheTtl',
+    'cacheTTL',
+    'cache_options',
+    'cacheOptions'
+];
+
+function compactCacheBlock(block) {
+
+    if (!block || typeof block !== 'object') return block;
+
+    const out = {};
+
+    for (const key of ['type', 'text', 'name', 'id', 'cache_control', 'cacheControl']) {
+        if (Object.prototype.hasOwnProperty.call(block, key)) out[key] = block[key];
+    }
+
+    if (Object.keys(out).length > 0) return out;
+
+    return block;
+
+}
+
+function collectCacheBlocks(value, pathLabel, out = []) {
+
+    if (!value || typeof value !== 'object') return out;
+
+    if (Array.isArray(value)) {
+        value.forEach((item, index) => collectCacheBlocks(item, `${pathLabel}[${index}]`, out));
+        return out;
+    }
+
+    const cacheControl = value.cache_control || value.cacheControl;
+
+    if (cacheControl) {
+        out.push({
+            path: pathLabel,
+            cache_control: cacheControl,
+            block: compactCacheBlock(value)
+        });
+    }
+
+    if (value.cache_control || value.cacheControl) return out;
+
+    for (const [key, nested] of Object.entries(value)) {
+        if (key === 'source' || key === 'image_url') continue;
+        collectCacheBlocks(nested, `${pathLabel}.${key}`, out);
+    }
+
+    return out;
+
+}
+
+function buildCachePassthrough(body) {
+
+    if (!body || typeof body !== 'object') return {};
+
+    const out = {};
+
+    for (const key of CACHE_PASSTHROUGH_KEYS) {
+        if (Object.prototype.hasOwnProperty.call(body, key)) out[key] = body[key];
+    }
+
+    const blocks = [];
+
+    collectCacheBlocks(body.system, 'system', blocks);
+    collectCacheBlocks(body.messages, 'messages', blocks);
+
+    if (blocks.length > 0) {
+        out.cache_controls = blocks;
+
+        if (!out.cache_control) out.cache_control = blocks[0].cache_control;
+
+        if (!out.prompt_cache) {
+            out.prompt_cache = {
+                type: 'ephemeral',
+                cache_controls: blocks
+            };
+        }
+    }
+
+    return out;
+
+}
+
 // =========================================================================
 
 // TOOL HANDLING
@@ -2453,7 +2548,12 @@ async function handleOpenAIChat(req, res) {
 
     const { input: finalInput, outputFormat } = injectTools(wrapped, tools);
 
-    const zoBody = { input: finalInput, stream, __proxyInput: finalInput };
+    const zoBody = {
+        input: finalInput,
+        stream,
+        __proxyInput: finalInput,
+        ...buildCachePassthrough(body)
+    };
 
     if (zoModel) zoBody.model_name = zoModel;
 
@@ -2587,7 +2687,12 @@ async function handleAnthropicMessages(req, res) {
 
     const { input: finalInput, outputFormat } = injectTools(wrapped, tools);
 
-    const zoBody = { input: finalInput, stream, __proxyInput: finalInput };
+    const zoBody = {
+        input: finalInput,
+        stream,
+        __proxyInput: finalInput,
+        ...buildCachePassthrough(body)
+    };
 
     if (zoModel) zoBody.model_name = zoModel;
 
