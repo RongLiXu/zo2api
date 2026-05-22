@@ -1085,9 +1085,47 @@ function hasUsageToken(zoBody, keys) {
 
 }
 
+function estimateTokenCount(text) {
+
+    if (!text) return 0;
+
+    const normalized = String(text).trim();
+
+    if (!normalized) return 0;
+
+    // Conservative mixed-language fallback used only when Zo returns no usage.
+    // CJK chars are close to 1 token each; latin text is roughly 4 chars/token.
+    const cjk = (normalized.match(/[\u3400-\u9fff\uf900-\ufaff]/g) || []).length;
+
+    const rest = normalized.length - cjk;
+
+    return Math.max(1, cjk + Math.ceil(rest / 4));
+
+}
+
+function estimateUsageFallback(zoBody, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens) {
+
+    if (inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheWriteTokens > 0 || totalTokens > 0) {
+        return { inputTokens, outputTokens, totalTokens };
+    }
+
+    const estimatedInput = estimateTokenCount(zoBody && (zoBody.__proxyInput || zoBody.input || zoBody.prompt || ''));
+
+    const rawOutput = zoBody && (zoBody.output || zoBody.text || zoBody.content || zoBody.response || '');
+
+    const estimatedOutput = estimateTokenCount(typeof rawOutput === 'string' ? rawOutput : JSON.stringify(rawOutput || ''));
+
+    return {
+        inputTokens: estimatedInput,
+        outputTokens: estimatedOutput,
+        totalTokens: estimatedInput + estimatedOutput
+    };
+
+}
+
 function normalizeZoUsage(zoBody) {
 
-    const inputTokens = pickUsageToken(zoBody, [
+    let inputTokens = pickUsageToken(zoBody, [
         'input_tokens',
         'prompt_tokens',
         'total_input_tokens',
@@ -1097,7 +1135,7 @@ function normalizeZoUsage(zoBody) {
         'promptTokens'
     ]);
 
-    const outputTokens = pickUsageToken(zoBody, [
+    let outputTokens = pickUsageToken(zoBody, [
         'output_tokens',
         'completion_tokens',
         'total_output_tokens',
@@ -1132,11 +1170,19 @@ function normalizeZoUsage(zoBody) {
         'cacheWriteTokens'
     ]);
 
-    const totalTokens = pickUsageToken(zoBody, [
+    let totalTokens = pickUsageToken(zoBody, [
         'total_tokens',
         'total_token_count',
         'totalTokens'
     ]);
+
+    const fallback = estimateUsageFallback(zoBody, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens);
+
+    inputTokens = fallback.inputTokens;
+
+    outputTokens = fallback.outputTokens;
+
+    totalTokens = fallback.totalTokens;
 
     const inputUsesOpenAIName = hasUsageToken(zoBody, ['prompt_tokens', 'promptTokens']);
 
@@ -1187,6 +1233,23 @@ function anthropicUsageFromZo(zoBody) {
     if (usage.cacheWriteTokens > 0) out.cache_creation_input_tokens = usage.cacheWriteTokens;
 
     return out;
+
+}
+
+function hasAnthropicUsage(usage) {
+
+    return !!usage && (
+        usage.input_tokens > 0 ||
+        usage.output_tokens > 0 ||
+        usage.cache_read_input_tokens > 0 ||
+        usage.cache_creation_input_tokens > 0
+    );
+
+}
+
+function hasOpenAIUsage(usage) {
+
+    return !!usage && usage.total_tokens > 0;
 
 }
 
@@ -1817,7 +1880,11 @@ function pipeZoStreamToOpenAI(zoStream, clientRes, requestModel, requestTools, p
 
         if (eventType === 'End' || ev.type === 'End') {
 
-            finalUsage = openAIUsageFromZo(ev);
+            const endUsage = openAIUsageFromZo({ ...ev, __proxyInput: proxyInput, output: accumulatedText });
+
+            if (hasOpenAIUsage(endUsage)) finalUsage = endUsage;
+
+            if (!finalUsage) finalUsage = openAIUsageFromZo({ __proxyInput: proxyInput, output: accumulatedText });
 
             const rawParsed = parseZoOutput(accumulatedText.trim());
 
@@ -2032,8 +2099,6 @@ data: ${JSON.stringify(data)}
 
         if (finished) return;
 
-        finished = true;
-
         if (!messageStarted) startMessage();
 
         if (textBlockOpen) closeTextBlock();
@@ -2047,6 +2112,8 @@ data: ${JSON.stringify(data)}
             usage: { output_tokens: finalUsage ? finalUsage.output_tokens : 0 }
 
         });
+
+        finished = true;
 
         clientRes.write(`event: message_stop
 
@@ -2168,7 +2235,11 @@ data: ${JSON.stringify({ type: 'message_stop' })}
 
         if (eventType === 'End' || ev.type === 'End') {
 
-            finalUsage = anthropicUsageFromZo(ev);
+            const endUsage = anthropicUsageFromZo({ ...ev, __proxyInput: proxyInput, output: accumulatedText });
+
+            if (hasAnthropicUsage(endUsage)) finalUsage = endUsage;
+
+            if (!finalUsage) finalUsage = anthropicUsageFromZo({ __proxyInput: proxyInput, output: accumulatedText });
 
             const rawParsed = parseZoOutput(accumulatedText.trim());
 
@@ -2394,7 +2465,7 @@ async function handleOpenAIChat(req, res) {
 
     if (convId) extraHeaders['x-conversation-id'] = convId;
 
-    if (stream && tools && tools.length > 0) {
+    if (process.env.ZO_FORCE_SYNC_TOOLS === 'true' && stream && tools && tools.length > 0) {
 
         try {
 
@@ -2411,6 +2482,8 @@ async function handleOpenAIChat(req, res) {
             const cid = result.headers['x-conversation-id'];
 
             if (cid) res.setHeader('x-conversation-id', cid);
+
+            if (result.body && typeof result.body === 'object') result.body.__proxyInput = finalInput;
 
             return writeOpenAIStreamFromZo(res, result.body, requestModel, tools);
 
@@ -2443,6 +2516,8 @@ async function handleOpenAIChat(req, res) {
             const cid = result.headers['x-conversation-id'];
 
             if (cid) res.setHeader('x-conversation-id', cid);
+
+            if (result.body && typeof result.body === 'object') result.body.__proxyInput = finalInput;
 
             res.writeHead(200, { 'Content-Type': 'application/json' });
 
@@ -2524,7 +2599,7 @@ async function handleAnthropicMessages(req, res) {
 
     if (convId) extraHeaders['x-conversation-id'] = convId;
 
-    if (stream && tools && tools.length > 0) {
+    if (process.env.ZO_FORCE_SYNC_TOOLS === 'true' && stream && tools && tools.length > 0) {
 
         try {
 
@@ -2541,6 +2616,8 @@ async function handleAnthropicMessages(req, res) {
             const cid = result.headers['x-conversation-id'];
 
             if (cid) res.setHeader('x-conversation-id', cid);
+
+            if (result.body && typeof result.body === 'object') result.body.__proxyInput = finalInput;
 
             return writeAnthropicStreamFromZo(res, result.body, requestModel, tools);
 
@@ -2573,6 +2650,8 @@ async function handleAnthropicMessages(req, res) {
             const cid = result.headers['x-conversation-id'];
 
             if (cid) res.setHeader('x-conversation-id', cid);
+
+            if (result.body && typeof result.body === 'object') result.body.__proxyInput = finalInput;
 
             res.writeHead(200, { 'Content-Type': 'application/json' });
 
