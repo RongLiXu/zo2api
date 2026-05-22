@@ -4,6 +4,28 @@ set -eu
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
+BUILD_IMAGE=false
+
+case "${1:-}" in
+  --build)
+    BUILD_IMAGE=true
+    ;;
+  "" )
+    ;;
+  -h|--help)
+    echo "Usage: ./scripts/deploy.sh [--build]"
+    echo ""
+    echo "Default: pull/use the image configured in docker-compose.yml and start the container."
+    echo "--build: build the image locally before starting."
+    exit 0
+    ;;
+  *)
+    echo "Unknown argument: $1" >&2
+    echo "Usage: ./scripts/deploy.sh [--build]" >&2
+    exit 1
+    ;;
+esac
+
 compose() {
   if docker compose version >/dev/null 2>&1; then
     docker compose "$@"
@@ -46,7 +68,12 @@ if [ -z "${ZO_ACCESS_TOKEN:-}" ] || [ "${ZO_ACCESS_TOKEN}" = "zo_sk_your_token_h
   exit 1
 fi
 
-compose up -d --build
+if [ "$BUILD_IMAGE" = "true" ]; then
+  compose up -d --build
+else
+  compose up -d --pull missing
+fi
+
 compose ps
 
 echo "Deployment complete. Base URL: http://localhost:${PORT:-8000}"

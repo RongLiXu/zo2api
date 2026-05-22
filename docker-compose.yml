@@ -1,8 +1,5 @@
 services:
   zo2api:
-    build:
-      context: .
-      dockerfile: Dockerfile
     image: shyurongli/zo2api:latest
     container_name: zo2api
     restart: unless-stopped
@@ -10,6 +7,8 @@ services:
       - .env
     ports:
       - "${PORT:-8000}:${PORT:-8000}"
+    networks:
+      - zo2api-network
     healthcheck:
       test:
         - CMD
@@ -20,3 +19,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  zo2api-network:
+    driver: bridge
