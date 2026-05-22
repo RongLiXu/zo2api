@@ -2565,35 +2565,7 @@ async function handleOpenAIChat(req, res) {
 
     if (convId) extraHeaders['x-conversation-id'] = convId;
 
-    if (process.env.ZO_FORCE_SYNC_TOOLS === 'true' && stream && tools && tools.length > 0) {
-
-        try {
-
-            const result = await zoFetch('POST', '/zo/ask', { ...zoBody, stream: false }, extraHeaders);
-
-            if (result.status !== 200) {
-
-                const msg = (result.body && (result.body.detail || result.body.error)) || 'Zo API error';
-
-                return sendError(res, result.status, msg);
-
-            }
-
-            const cid = result.headers['x-conversation-id'];
-
-            if (cid) res.setHeader('x-conversation-id', cid);
-
-            if (result.body && typeof result.body === 'object') result.body.__proxyInput = finalInput;
-
-            return writeOpenAIStreamFromZo(res, result.body, requestModel, tools);
-
-        } catch (e) {
-
-            return sendError(res, 502, `Zo API connection error: ${e.message}`);
-
-        }
-
-    } else if (stream) {
+    if (stream) {
 
         const zoStream = zoStreamRequest('POST', '/zo/ask', zoBody, extraHeaders);
 
@@ -2704,35 +2676,7 @@ async function handleAnthropicMessages(req, res) {
 
     if (convId) extraHeaders['x-conversation-id'] = convId;
 
-    if (process.env.ZO_FORCE_SYNC_TOOLS === 'true' && stream && tools && tools.length > 0) {
-
-        try {
-
-            const result = await zoFetch('POST', '/zo/ask', { ...zoBody, stream: false }, extraHeaders);
-
-            if (result.status !== 200) {
-
-                const msg = (result.body && (result.body.detail || result.body.error)) || 'Zo API error';
-
-                return sendError(res, result.status, msg, 'anthropic');
-
-            }
-
-            const cid = result.headers['x-conversation-id'];
-
-            if (cid) res.setHeader('x-conversation-id', cid);
-
-            if (result.body && typeof result.body === 'object') result.body.__proxyInput = finalInput;
-
-            return writeAnthropicStreamFromZo(res, result.body, requestModel, tools);
-
-        } catch (e) {
-
-            return sendError(res, 502, `Zo API connection error: ${e.message}`, 'anthropic');
-
-        }
-
-    } else if (stream) {
+    if (stream) {
 
         const zoStream = zoStreamRequest('POST', '/zo/ask', zoBody, extraHeaders);
 
