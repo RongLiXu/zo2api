@@ -327,13 +327,19 @@ function extractText(content) {
 
         return content.map(block => {
 
-            if (block.type === 'text') return block.text;
+            if (typeof block === 'string') return block;
 
-            if (block.type === 'image' || block.type === 'image_url') return '[Image]';
+            if (!block || typeof block !== 'object') return String(block || '');
+
+            if (block.type === 'text' || block.type === 'input_text' || block.type === 'output_text') return block.text || '';
+
+            if (block.type === 'image' || block.type === 'image_url' || block.type === 'input_image') return '[Image]';
 
             if (block.type === 'tool_use') return `[Tool Use: ${block.name}(${JSON.stringify(block.input)})]`;
 
             if (block.type === 'tool_result') return `[Tool Result: ${JSON.stringify(block.content)}]`;
+
+            if (block.type === 'function_call') return `[Function Call: ${block.name}(${block.arguments || ''})]`;
 
             return JSON.stringify(block);
 
@@ -341,7 +347,15 @@ function extractText(content) {
 
     }
 
-    if (content && typeof content === 'object') return JSON.stringify(content);
+    if (content && typeof content === 'object') {
+
+        if (typeof content.text === 'string') return content.text;
+
+        if (typeof content.content === 'string' || Array.isArray(content.content)) return extractText(content.content);
+
+        return JSON.stringify(content);
+
+    }
 
     return String(content || '');
 
@@ -376,6 +390,57 @@ function buildInputFromAnthropic(system, messages) {
     return parts.join('');
 
 }
+
+function buildInputFromResponses(input, instructions) {
+
+    const parts = [];
+
+    if (instructions) {
+
+        const sys = typeof instructions === 'string' ? instructions : extractText(instructions);
+
+        if (sys) parts.push(PROMPT_OVERRIDE ? `[context]: ${sys}` : `[system]: ${sys}`);
+
+    }
+
+    if (typeof input === 'string') {
+
+        if (input) parts.push(input);
+
+        return parts.join('');
+
+    }
+
+    if (Array.isArray(input)) {
+
+        for (const item of input) {
+
+            if (item && typeof item === 'object' && item.role) {
+
+                parts.push(`[${item.role}]: ${extractText(item.content)}`);
+
+            } else {
+
+                const text = extractText(item);
+
+                if (text) parts.push(text);
+
+            }
+
+        }
+
+        return parts.join('');
+
+    }
+
+    const text = extractText(input);
+
+    if (text) parts.push(text);
+
+    return parts.join('');
+
+}
+
 
 const CACHE_PASSTHROUGH_KEYS = [
     'cache_control',
@@ -454,6 +519,8 @@ function buildCachePassthrough(body) {
 
     collectCacheBlocks(body.system, 'system', blocks);
     collectCacheBlocks(body.messages, 'messages', blocks);
+    collectCacheBlocks(body.instructions, 'instructions', blocks);
+    collectCacheBlocks(body.input, 'input', blocks);
 
     if (blocks.length > 0) {
         out.cache_controls = blocks;
@@ -1577,6 +1644,68 @@ function openAIToZoOutput(zoBody, requestModel, requestTools) {
 
 }
 
+function responsesUsageFromZo(zoBody) {
+
+    const usage = normalizeZoUsage(zoBody);
+
+    return {
+        input_tokens: usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens,
+        output_tokens: usage.outputTokens,
+        total_tokens: Math.max(usage.totalTokens, usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens + usage.outputTokens),
+        input_tokens_details: { cached_tokens: usage.cacheReadTokens },
+        output_tokens_details: {}
+    };
+
+}
+
+function responsesToZoOutput(zoBody, requestModel, requestTools) {
+
+    const rawParsed = parseZoOutput(zoBody.output);
+
+    rawParsed.__proxyInput = zoBody.__proxyInput || '';
+
+    const parsed = normalizeParsedForClient(rawParsed, requestTools);
+
+    const cleanText = sanitizeOutput(parsed.text || '');
+
+    const output = [{
+        id: 'msg_' + uuid(),
+        type: 'message',
+        status: 'completed',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: cleanText, annotations: [] }]
+    }];
+
+    if (parsed.tool_calls && parsed.tool_calls.length > 0) {
+
+        for (const tc of parsed.tool_calls) {
+
+            const mappedName = mapToolName(tc.name, requestTools);
+
+            output.push({
+                type: 'function_call',
+                call_id: 'call_' + uuid().slice(0, 24),
+                name: mappedName,
+                arguments: JSON.stringify(mapToolArgs(tc.arguments, mappedName, requestTools))
+            });
+
+        }
+
+    }
+
+    return {
+        id: 'resp_' + uuid(),
+        object: 'response',
+        created_at: ts(),
+        model: requestModel,
+        status: 'completed',
+        output,
+        output_text: cleanText,
+        usage: responsesUsageFromZo(zoBody)
+    };
+
+}
+
 function anthropicToZoOutput(zoBody, requestModel, requestTools) {
 
     const rawParsed = parseZoOutput(zoBody.output);
@@ -2142,6 +2271,403 @@ function pipeZoStreamToOpenAI(zoStream, clientRes, requestModel, requestTools, p
 
 }
 
+function pipeZoStreamToResponses(zoStream, clientRes, requestModel, requestTools, proxyInput = '') {
+
+    const responseId = 'resp_' + uuid();
+
+    const createdAt = ts();
+
+    const messageId = 'msg_' + uuid();
+
+    const hasTools = requestTools && requestTools.length > 0;
+
+    let buffer = '';
+
+    let eventType = '';
+
+    let accumulatedText = '';
+
+    let seq = 0;
+
+    let responseHeadersCollected = false;
+
+    let started = false;
+
+    let finished = false;
+
+    let finalUsage = null;
+
+    function collectHeaders(h) {
+
+        if (responseHeadersCollected) return;
+
+        responseHeadersCollected = true;
+
+        const cid = h['x-conversation-id'];
+
+        if (cid) clientRes.setHeader('x-conversation-id', cid);
+
+    }
+
+    function buildFinalOutput(parsed, fallbackText) {
+
+        const cleanText = parsed && parsed.text !== undefined ? sanitizeOutput(parsed.text || '') : sanitizeOutput(fallbackText || '');
+
+        const items = [{
+            id: messageId,
+            type: 'message',
+            status: 'completed',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: cleanText, annotations: [] }]
+        }];
+
+        if (parsed && parsed.tool_calls && parsed.tool_calls.length > 0) {
+
+            for (const tc of parsed.tool_calls) {
+
+                const mappedName = mapToolName(tc.name, requestTools);
+
+                const args = JSON.stringify(mapToolArgs(tc.arguments, mappedName, requestTools));
+
+                items.push({
+                    type: 'function_call',
+                    call_id: 'call_' + uuid().slice(0, 24),
+                    name: mappedName,
+                    arguments: args,
+                    status: 'completed'
+                });
+
+            }
+
+        }
+
+        return { items, cleanText };
+
+    }
+
+    function responseShell(status, extras = {}) {
+
+        return {
+            id: responseId,
+            object: 'response',
+            created_at: createdAt,
+            model: requestModel,
+            status,
+            instructions: null,
+            tools: requestTools || [],
+            tool_choice: 'auto',
+            metadata: {},
+            ...extras
+        };
+
+    }
+
+    function emit(event, data) {
+
+        if (finished && event !== 'response.completed') return;
+
+        data.type = event;
+
+        data.sequence_number = seq++;
+
+        clientRes.write(`event: ${event}
+data: ${JSON.stringify(data)}
+
+`);
+
+    }
+
+    function startResponse() {
+
+        if (started) return;
+
+        started = true;
+
+        emit('response.created', { response: responseShell('in_progress') });
+
+        emit('response.in_progress', { response: responseShell('in_progress') });
+
+        emit('response.output_item.added', {
+            output_index: 0,
+            item: { id: messageId, type: 'message', status: 'in_progress', role: 'assistant', content: [] }
+        });
+
+        emit('response.content_part.added', {
+            item_id: messageId,
+            output_index: 0,
+            content_index: 0,
+            part: { type: 'output_text', text: '', annotations: [] }
+        });
+
+    }
+
+    function finishResponse() {
+
+        if (finished) return;
+
+        startResponse();
+
+        const rawParsed = parseZoOutput(accumulatedText.trim());
+
+        rawParsed.__proxyInput = proxyInput;
+
+        const parsed = normalizeParsedForClient(rawParsed, requestTools);
+
+        const finalText = hasTools
+            ? sanitizeOutput(parsed.text || '')
+            : sanitizeOutput(parsed.text !== undefined && parsed.text !== null ? parsed.text : accumulatedText);
+
+        if (hasTools && finalText) emit('response.output_text.delta', {
+            item_id: messageId,
+            output_index: 0,
+            content_index: 0,
+            delta: finalText
+        });
+
+        emit('response.output_text.done', {
+            item_id: messageId,
+            output_index: 0,
+            content_index: 0,
+            text: finalText
+        });
+
+        emit('response.content_part.done', {
+            item_id: messageId,
+            output_index: 0,
+            content_index: 0,
+            part: { type: 'output_text', text: finalText, annotations: [] }
+        });
+
+        emit('response.output_item.done', {
+            output_index: 0,
+            item: {
+                id: messageId,
+                type: 'message',
+                status: 'completed',
+                role: 'assistant',
+                content: [{ type: 'output_text', text: finalText, annotations: [] }]
+            }
+        });
+
+        if (parsed.tool_calls && parsed.tool_calls.length > 0) {
+
+            parsed.tool_calls.forEach((tc, i) => {
+
+                const mappedName = mapToolName(tc.name, requestTools);
+
+                const args = JSON.stringify(mapToolArgs(tc.arguments, mappedName, requestTools));
+
+                const callId = 'call_' + uuid().slice(0, 24);
+
+                const outputIndex = i + 1;
+
+                emit('response.output_item.added', {
+                    output_index: outputIndex,
+                    item: { type: 'function_call', call_id: callId, name: mappedName, arguments: '', status: 'in_progress' }
+                });
+
+                if (args) emit('response.function_call_arguments.delta', {
+                    item_id: callId,
+                    output_index: outputIndex,
+                    delta: args
+                });
+
+                emit('response.function_call_arguments.done', {
+                    item_id: callId,
+                    output_index: outputIndex,
+                    arguments: args
+                });
+
+                emit('response.output_item.done', {
+                    output_index: outputIndex,
+                    item: { type: 'function_call', call_id: callId, name: mappedName, arguments: args, status: 'completed' }
+                });
+
+            });
+
+        }
+
+        if (!finalUsage) finalUsage = responsesUsageFromZo({ __proxyInput: proxyInput, output: accumulatedText });
+
+        const { items } = buildFinalOutput(parsed, finalText);
+
+        finished = true;
+
+        emit('response.completed', {
+            response: responseShell('completed', {
+                output: items,
+                output_text: finalText,
+                usage: finalUsage
+            })
+        });
+
+    }
+
+    function failResponse(message) {
+
+        if (finished) return;
+
+        startResponse();
+
+        finished = true;
+
+        emit('response.failed', {
+            response: responseShell('failed', {
+                error: { code: 'upstream_error', message: String(message || 'Unknown error') },
+                usage: finalUsage || responsesUsageFromZo({ __proxyInput: proxyInput, output: accumulatedText })
+            })
+        });
+
+    }
+
+    function processEventBlock(block) {
+
+        const parsedBlock = parseSseEventBlock(block);
+
+        if (parsedBlock.eventType) eventType = parsedBlock.eventType;
+
+        const raw = parsedBlock.dataLines.join('\n').trim();
+
+        if (!raw) return;
+
+        let ev;
+
+        try { ev = JSON.parse(raw); } catch { return; }
+
+        const eventUsage = responsesUsageFromZo(ev);
+        if (eventUsage.total_tokens > 0) finalUsage = eventUsage;
+
+        if (eventType === 'FrontendModelResponse' || ev.type === 'FrontendModelResponse') {
+
+            const content = (ev.parts && ev.parts[0] && ev.parts[0].content) || ev.data?.content || '';
+
+            if (!content) return;
+
+            accumulatedText += content;
+
+            if (!hasTools) {
+
+                const cleanChunk = sanitizeStreamChunk(content);
+
+                if (cleanChunk) {
+
+                    startResponse();
+
+                    emit('response.output_text.delta', {
+                        item_id: messageId,
+                        output_index: 0,
+                        content_index: 0,
+                        delta: cleanChunk
+                    });
+
+                }
+
+            }
+
+            return;
+
+        }
+
+        if (eventType === 'End' || ev.type === 'End') {
+
+            const endUsage = responsesUsageFromZo({ ...ev, __proxyInput: proxyInput, output: accumulatedText });
+
+            if (endUsage.total_tokens > 0) finalUsage = endUsage;
+
+            finishResponse();
+
+            return;
+
+        }
+
+        if (eventType === 'Error' || ev.type === 'Error') {
+
+            const msg = (ev.data && ev.data.message) || 'Unknown error';
+
+            failResponse(msg);
+
+        }
+
+    }
+
+    zoStream.on('response', (resp) => {
+
+        collectHeaders(resp.headers);
+
+        if (resp.statusCode !== 200) {
+
+            let body = '';
+
+            resp.on('data', c => body += c);
+
+            resp.on('end', () => {
+
+                clientRes.writeHead(resp.statusCode, { 'Content-Type': 'application/json' });
+
+                let msg = 'Zo API error';
+
+                try { msg = JSON.parse(body).detail || JSON.parse(body).error || msg; } catch { }
+
+                clientRes.end(JSON.stringify({ error: { message: msg, type: 'api_error', code: String(resp.statusCode) } }));
+
+            });
+
+            return;
+
+        }
+
+        clientRes.writeHead(200, {
+
+            'Content-Type': 'text/event-stream',
+
+            'Cache-Control': 'no-cache',
+
+            'Connection': 'keep-alive'
+
+        });
+
+        resp.on('data', chunk => {
+
+            buffer += chunk.toString();
+
+            const { blocks, remainder } = splitSseBlocks(buffer);
+
+            buffer = remainder;
+
+            for (const block of blocks) processEventBlock(block);
+
+        });
+
+        resp.on('end', () => {
+
+            if (buffer.trim()) processEventBlock(buffer);
+
+            if (!finished && clientRes.headersSent) finishResponse();
+
+            clientRes.end();
+
+        });
+
+        resp.on('error', () => {
+
+            if (buffer.trim()) processEventBlock(buffer);
+
+            if (!finished && clientRes.headersSent) finishResponse();
+
+            clientRes.end();
+
+        });
+
+    });
+
+    zoStream.on('error', () => {
+
+        if (!clientRes.headersSent) sendError(clientRes, 502, 'Failed to connect to Zo API');
+
+    });
+
+}
+
 function pipeZoStreamToAnthropic(zoStream, clientRes, requestModel, requestTools, proxyInput = '') {
 
     const msgId = 'msg_' + uuid();
@@ -2183,7 +2709,6 @@ function pipeZoStreamToAnthropic(zoStream, clientRes, requestModel, requestTools
         if (finished && event !== 'message_stop') return;
 
         clientRes.write(`event: ${event}
-
 data: ${JSON.stringify(data)}
 
 `);
@@ -2605,6 +3130,85 @@ async function handleOpenAIChat(req, res) {
 
 }
 
+async function handleOpenAIResponses(req, res) {
+
+    let body;
+
+    try { body = await readBody(req); } catch (e) { return sendError(res, 400, 'Invalid JSON body'); }
+
+    await ensureModelCache();
+
+    const requestModel = body.model || 'unknown';
+
+    const zoModel = mapModel(requestModel);
+
+    const stream = !!body.stream;
+
+    const convId = body.previous_response_id || req.headers['x-conversation-id'];
+
+    const tools = body.tools;
+
+    const wrapped = wrapInput(buildInputFromResponses(body.input || '', body.instructions));
+
+    const { input: finalInput, outputFormat } = injectTools(wrapped, tools);
+
+    const zoBody = {
+        input: finalInput,
+        stream,
+        __proxyInput: finalInput,
+        ...buildCachePassthrough(body)
+    };
+
+    if (zoModel) zoBody.model_name = zoModel;
+
+    if (outputFormat) zoBody.output_format = outputFormat;
+
+    else if (PROMPT_OVERRIDE && !stream) zoBody.output_format = textOnlyOutputFormat();
+
+    const extraHeaders = {};
+
+    if (convId) extraHeaders['x-conversation-id'] = convId;
+
+    if (stream) {
+
+        const zoStream = zoStreamRequest('POST', '/zo/ask', zoBody, extraHeaders);
+
+        pipeZoStreamToResponses(zoStream, res, requestModel, tools, finalInput);
+
+    } else {
+
+        try {
+
+            const result = await zoFetch('POST', '/zo/ask', zoBody, extraHeaders);
+
+            if (result.status !== 200) {
+
+                const msg = (result.body && (result.body.detail || result.body.error)) || 'Zo API error';
+
+                return sendError(res, result.status, msg);
+
+            }
+
+            const cid = result.headers['x-conversation-id'];
+
+            if (cid) res.setHeader('x-conversation-id', cid);
+
+            if (result.body && typeof result.body === 'object') result.body.__proxyInput = finalInput;
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+
+            res.end(JSON.stringify(responsesToZoOutput(result.body, requestModel, tools)));
+
+        } catch (e) {
+
+            sendError(res, 502, `Zo API connection error: ${e.message}`);
+
+        }
+
+    }
+
+}
+
 async function handleOpenAIModels(req, res) {
 
     try {
@@ -2763,6 +3367,8 @@ const server = http.createServer((req, res) => {
 
     if (path === '/v1/v1/chat/completions') path = '/v1/chat/completions';
 
+    if (path === '/v1/v1/responses') path = '/v1/responses';
+
     if (path === '/v1/v1/messages') path = '/v1/messages';
 
     if (path === '/v1/v1/models') path = '/v1/models';
@@ -2771,9 +3377,13 @@ const server = http.createServer((req, res) => {
 
     if (path === '/chat/completions') path = '/v1/chat/completions';
 
+    if (path === '/responses') path = '/v1/responses';
+
     if (path === '/models') path = '/v1/models';
 
     if (req.method === 'POST' && path === '/v1/chat/completions') handleOpenAIChat(req, res);
+
+    else if (req.method === 'POST' && path === '/v1/responses') handleOpenAIResponses(req, res);
 
     else if (req.method === 'GET' && path === '/v1/models') handleOpenAIModels(req, res);
 
